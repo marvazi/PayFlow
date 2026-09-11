@@ -21,6 +21,22 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+  db_test:
+    image: postgres:18
 
+    environment:
+      POSTGRES_DB: payflow_test
+      POSTGRES_USER: payflow_test
+      POSTGRES_PASSWORD: payflow_test_password
+
+    ports:
+      - "127.0.0.1:5434:5432"
+
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U payflow_test -d payflow_test" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 volumes:
   postgres_data:
