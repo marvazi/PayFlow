@@ -1,5 +1,8 @@
+from typing import Literal
 from uuid import UUID
 from datetime import datetime
+
+import jwt
 from pydantic import BaseModel, ConfigDict, Field, EmailStr, field_validator
 
 
@@ -28,3 +31,18 @@ class UserResponse(BaseModel):
     email:EmailStr
     name:str
     created_at:datetime
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = Field(default="bearer")

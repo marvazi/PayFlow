@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings,SettingsConfigDict
 
 
@@ -8,5 +9,8 @@ class Settings(BaseSettings):
         extra="ignore"
     )
     database_url: str
+    jwt_secret_key: str
+    jwt_algorithm: str = 'HS256'
+    access_token_expire_minutes: int = Field(default=30, gt=0)
 
 settings = Settings()
