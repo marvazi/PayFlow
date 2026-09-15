@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 from httpx import ASGITransport, AsyncClient
 
+from app.api.dependencies import get_auth_session
 from app.main import app
 from app.db.session import get_session
 import pytest_asyncio
@@ -26,12 +27,32 @@ async def db_session() -> AsyncIterator[AsyncSession]:
     finally:
         await engine.dispose()
 
+@pytest_asyncio.fixture()
+async def auth_db_session() -> AsyncIterator[AsyncSession]:
+    engine = create_async_engine(TEST_DATABASE_URL)
+    session_factory = async_sessionmaker(bind=engine, expire_on_commit=False)
+    try:
+        async with session_factory() as session:
+            yield session
+    finally:
+        await engine.dispose()
+
 @pytest_asyncio.fixture
-async def client(db_session):
+async def client(db_session, auth_db_session):
     async def override_get_session():
-        yield db_session
+        try:
+            yield db_session
+        finally:
+            await db_session.rollback()
+
+    async def override_get_auth_session():
+        try:
+            yield auth_db_session
+        finally:
+            await auth_db_session.rollback()
 
     app.dependency_overrides[get_session] = override_get_session
+    app.dependency_overrides[get_auth_session] = override_get_auth_session
 
     try:
         async with AsyncClient(
@@ -41,3 +62,4 @@ async def client(db_session):
             yield test_client
     finally:
         app.dependency_overrides.pop(get_session, None)
+        app.dependency_overrides.pop(get_auth_session, None)

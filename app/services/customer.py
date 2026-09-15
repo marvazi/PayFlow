@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exeptions import CustomerNotFoundError
 from app.models import Customer
 from app.repositories.customer import CustomerRepository
-from sqlalchemy.exc import IntegrityError
 
 
 class CustomerService:

@@ -1,6 +1,8 @@
 from uuid import UUID
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import Membership
+from app.models import Membership, Organization
 
 
 class MembershipRepository:
@@ -17,4 +19,13 @@ class MembershipRepository:
         self.session.add(membership)
         await self.session.flush()
         return membership
-    
+
+    async def get_by_user_and_organization(self, user_id:UUID,organization_id:UUID) -> Membership | None:
+        result = await self.session.execute(
+            select(Membership).
+            where(
+                Membership.user_id == user_id,
+                Membership.organization_id == organization_id,
+            )
+        )
+        return result.scalar_one_or_none()
