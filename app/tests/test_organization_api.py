@@ -214,3 +214,96 @@ async def test_user_cannot_read_another_users_organization(client, db_session):
             delete(User).where(User.email.in_(emails))
         )
         await db_session.commit()
+
+from uuid import UUID, uuid4
+
+import pytest
+from sqlalchemy import delete, select
+
+from app.models import Membership, Organization, User
+
+
+@pytest.mark.asyncio
+async def test_manager_cannot_add_member_via_api(client, db_session):
+    organizations_url = "/organization"
+    emails = [f"{uuid4()}@example.com" for _ in range(3)]
+    organization_name = f"Test-{uuid4()}"
+    password = "TestPassword123"
+    user_ids = []
+
+    try:
+        # Регистрируем владельца, менеджера и будущего участника.
+        for email in emails:
+            response = await client.post(
+                "/auth/register",
+                json={
+                    "name": "Тестовый пользователь",
+                    "email": email,
+                    "password": password,
+                },
+            )
+            assert response.status_code == 201, response.text
+            user_ids.append(response.json()["id"])
+
+        # Получаем токены владельца и менеджера.
+        tokens = []
+        for email in emails[:2]:
+            response = await client.post(
+                "/auth/login",
+                json={"email": email, "password": password},
+            )
+            assert response.status_code == 200, response.text
+            tokens.append(response.json()["access_token"])
+
+        owner_headers = {"Authorization": f"Bearer {tokens[0]}"}
+        manager_headers = {"Authorization": f"Bearer {tokens[1]}"}
+
+        # Владелец создаёт организацию.
+        response = await client.post(
+            organizations_url,
+            json={"name": organization_name},
+            headers=owner_headers,
+        )
+        assert response.status_code == 201, response.text
+        organization_id = response.json()["id"]
+        members_url = f"{organizations_url}/{organization_id}/members"
+
+        # Владелец назначает второго пользователя менеджером.
+        response = await client.post(
+            members_url,
+            json={"user_id": user_ids[1], "role": "manager"},
+            headers=owner_headers,
+        )
+        assert response.status_code == 201, response.text
+        assert response.json()["role"] == "manager"
+        assert response.json()["user_id"] == user_ids[1]
+
+        # Менеджер пытается добавить третьего пользователя.
+        response = await client.post(
+            members_url,
+            json={"user_id": user_ids[2], "role": "viewer"},
+            headers=manager_headers,
+        )
+        assert response.status_code == 403, response.text
+        assert response.json()["detail"] == "Недостаточно прав"
+
+        # После отказа участие не должно появиться.
+        result = await db_session.execute(
+            select(Membership).where(
+                Membership.organization_id == UUID(organization_id),
+                Membership.user_id == UUID(user_ids[2]),
+            )
+        )
+        assert result.scalar_one_or_none() is None
+
+    finally:
+        await db_session.rollback()
+        await db_session.execute(
+            delete(Organization).where(
+                Organization.name == organization_name
+            )
+        )
+        await db_session.execute(
+            delete(User).where(User.email.in_(emails))
+        )
+        await db_session.commit()

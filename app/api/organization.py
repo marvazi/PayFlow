@@ -3,10 +3,15 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 from fastapi.params import Depends
 from starlette import status
+
+from app.db.session import get_session
+from app.schemas.membership import MembershipCreate, MembershipResponse
+from app.services.membership import MembershipService
 from app.services.user import UserService
-from app.api.dependencies import get_user_service, get_current_user, get_organization_service
-from app.core.exeptions import EmailAlreadyExistsError, InvalidCredentialsError, OrganizationNotFoundError
-from app.models import User, Organization
+from app.api.dependencies import get_user_service, get_current_user, get_organization_service, get_member_service
+from app.core.exeptions import EmailAlreadyExistsError, InvalidCredentialsError, OrganizationNotFoundError, \
+    MembershipAlreadyExistsError, UserNotFoundError, PermissionDeniedError, InvalidMembershipRoleError
+from app.models import User, Organization, organization
 from app.schemas.organization import OrganizationResponse, OrganizationCreate
 from app.schemas.user import UserCreate, UserResponse, TokenResponse, UserLogin
 from app.services.organization import OrganizationService
@@ -46,3 +51,28 @@ async def get_organization_by_id(
     except OrganizationNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Организация не найдена") from exc
     return organization
+
+@router.post("/{organization_id}/members", response_model=MembershipResponse, status_code=status.HTTP_201_CREATED)
+async def create_member(
+        organization_id: UUID,
+        member:MembershipCreate,
+        user: User = Depends(get_current_user),
+        member_service: MembershipService = Depends(get_member_service)
+):
+    try:
+        added_member = await member_service.add_member(
+            actor_id=user.id,
+            organization_id=organization_id,
+            new_user_id=member.user_id,
+            role=member.role,
+        )
+    except (OrganizationNotFoundError, UserNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionDeniedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except MembershipAlreadyExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except InvalidMembershipRoleError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return added_member

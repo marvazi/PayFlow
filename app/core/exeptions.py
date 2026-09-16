@@ -12,3 +12,9 @@ class OrganizationNotFoundError(Exception):
     pass
 class PermissionDeniedError(Exception):
     pass
+class UserNotFoundError(Exception):
+    pass
+class MembershipAlreadyExistsError(Exception):
+    pass
+class InvalidMembershipRoleError(Exception):
+    pass

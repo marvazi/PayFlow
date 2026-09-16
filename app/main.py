@@ -1,6 +1,9 @@
+import uvicorn
 from fastapi import FastAPI
 from fastapi import Depends
 from sqlalchemy import text
+from starlette.middleware.cors import CORSMiddleware
+
 from app.db.session import get_session
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import router as auth_router
@@ -11,6 +14,7 @@ app.include_router(auth_router)
 app.include_router(organization_router)
 
 
+
 @app.get("/health", tags=["health"])
 async def health():
     return {"status": "ok"}
@@ -19,4 +23,5 @@ async def health():
 async def check_database(session: AsyncSession = Depends(get_session)):
     await session.execute(text("SELECT 1"))
     return {"database": "ok"}
+
 
