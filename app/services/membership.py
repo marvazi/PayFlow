@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exeptions import PermissionDeniedError, UserNotFoundError, EmailAlreadyExistsError, \
-    MembershipAlreadyExistsError, InvalidMembershipRoleError
+    MembershipAlreadyExistsError, InvalidMembershipRoleError, MembershipNotFoundError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exeptions import OrganizationNotFoundError
 from app.models import Membership, User
@@ -60,6 +60,53 @@ class MembershipService:
 
             raise
         return membership
+
+    async def list_members(self, actor_id: UUID, organization_id: UUID) -> list[Membership]:
+        membership = await self.membership_repository.get_by_user_and_organization(
+            user_id=actor_id,
+            organization_id=organization_id
+        )
+        if membership is None:
+            raise OrganizationNotFoundError("Организация не найдена")
+        users= await self.membership_repository.get_users_by_organization(organization_id=organization_id)
+
+        return users
+
+    async def change_role(self, user_id:UUID, organization_id:UUID, actor_id:UUID, role:str)->Membership:
+        if role not in('manager',"viewer"):
+            raise InvalidMembershipRoleError('Допустимые роли: manager, viewer')
+        async with self.session.begin():
+            await self.require_owner(user_id=actor_id, organization_id=organization_id)
+            member = await self.membership_repository.get_by_user_and_organization(user_id=user_id, organization_id=organization_id)
+            if member is None:
+                raise MembershipNotFoundError("Участник не найден")
+            elif member.role == 'owner':
+                raise PermissionDeniedError("роль владельца менять запрещено")
+            new_role = await self.membership_repository.update_role(
+                membership=member,
+                role=role,
+            )
+            return new_role
+
+    async def remove_member(self, actor_id:UUID,organization_id: UUID, user_id: UUID) -> None:
+        async with self.session.begin():
+            await self.require_owner(user_id=actor_id, organization_id=organization_id)
+            member = await self.membership_repository.get_by_user_and_organization(
+                user_id=user_id,
+                organization_id=organization_id
+            )
+            if member is None:
+                raise MembershipNotFoundError("Участник не найден")
+            elif member.role == 'owner':
+                raise PermissionDeniedError("Владельца удалить нельзя")
+            await self.membership_repository.delete(membership=member)
+
+
+
+
+
+
+
 
 
 

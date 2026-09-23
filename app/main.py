@@ -8,11 +8,12 @@ from app.db.session import get_session
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import router as auth_router
 from app.api.organization import router as organization_router
+from app.api.customer import router as customer_router
 
 app = FastAPI(title="PayFlow")
 app.include_router(auth_router)
 app.include_router(organization_router)
-
+app.include_router(customer_router)
 
 
 @app.get("/health", tags=["health"])

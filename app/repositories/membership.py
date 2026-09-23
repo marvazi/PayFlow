@@ -29,3 +29,21 @@ class MembershipRepository:
             )
         )
         return result.scalar_one_or_none()
+
+    async def get_users_by_organization(self, organization_id:UUID) -> list[Membership]:
+        result = await self.session.execute(
+            select(Membership).
+            where(
+                Membership.organization_id == organization_id,
+            )
+        )
+        return list(result.scalars().all())
+
+    async def update_role(self,role:str,membership:Membership) -> Membership:
+        membership.role = role
+        await self.session.flush()
+        return membership
+
+    async def delete(self,membership:Membership) -> None:
+        await self.session.delete(membership)
+        await self.session.flush()

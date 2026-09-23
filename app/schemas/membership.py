@@ -18,3 +18,7 @@ class MembershipResponse(BaseModel):
     organization_id: UUID
     role: Literal["owner","manager", "viewer"]
     created_at: datetime
+
+class MembershipUpdate(BaseModel):
+
+    role: Literal["manager", "viewer"]

@@ -13,3 +13,17 @@ class CustomerRepository:
         )
         customer = result.scalar_one_or_none()
         return customer
+
+    async def create(self, name:str, email:str, organization_id:UUID) -> Customer:
+        customer = Customer(name=name, email=email, organization_id=organization_id)
+        self.session.add(customer)
+        await self.session.flush()
+        return customer
+
+    async def list_by_organization(self, organization_id:UUID) ->list[Customer]:
+        res = await self.session.execute(
+            select(Customer).
+            where(Customer.organization_id == organization_id).
+            order_by(Customer.created_at, Customer.id)
+        )
+        return list(res.scalars().all())

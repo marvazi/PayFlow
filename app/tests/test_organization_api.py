@@ -307,3 +307,5 @@ async def test_manager_cannot_add_member_via_api(client, db_session):
             delete(User).where(User.email.in_(emails))
         )
         await db_session.commit()
+
+    

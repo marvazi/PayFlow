@@ -63,3 +63,4 @@ async def client(db_session, auth_db_session):
     finally:
         app.dependency_overrides.pop(get_session, None)
         app.dependency_overrides.pop(get_auth_session, None)
+

@@ -1,8 +1,6 @@
 from typing import Literal
 from uuid import UUID
 from datetime import datetime
-
-import jwt
 from pydantic import BaseModel, ConfigDict, Field, EmailStr, field_validator
 
 

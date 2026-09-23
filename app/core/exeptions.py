@@ -18,3 +18,9 @@ class MembershipAlreadyExistsError(Exception):
     pass
 class InvalidMembershipRoleError(Exception):
     pass
+class MembershipNotFoundError(Exception):
+    pass
+
+
+class CustomerAlreadyExistsError(Exception):
+    pass
