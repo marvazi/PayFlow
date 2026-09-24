@@ -2,8 +2,11 @@ from datetime import datetime
 from sqlalchemy import DateTime, String, func
 from app.db.base import Base
 from uuid import uuid4, UUID
-from sqlalchemy.orm import mapped_column, Mapped
+from sqlalchemy.orm import mapped_column, Mapped, relationship
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from app.models.invoice import Invoice
 
 class Organization(Base):
     __tablename__ = "organizations"
@@ -14,4 +17,8 @@ class Organization(Base):
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
+    )
+    invoices: Mapped[list["Invoice"]] = relationship(
+        back_populates="organization",
+        passive_deletes="all",
     )

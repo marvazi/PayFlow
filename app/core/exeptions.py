@@ -21,6 +21,8 @@ class InvalidMembershipRoleError(Exception):
 class MembershipNotFoundError(Exception):
     pass
 
+class InvoiceNotFoundError(Exception):
+    pass
 
 class CustomerAlreadyExistsError(Exception):
     pass

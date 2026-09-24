@@ -508,3 +508,326 @@ async def test_read_customers_requires_authentication(
 
     assert response.status_code == 401, response.text
     assert response.headers["WWW-Authenticate"] == "Bearer"
+
+
+async def read_customer_state(db_session, customer_id):
+    await db_session.rollback()
+    try:
+        result = await db_session.execute(
+            select(
+                Customer.id,
+                Customer.organization_id,
+                Customer.name,
+                Customer.email,
+                Customer.created_at,
+            ).where(Customer.id == customer_id)
+        )
+        row = result.mappings().one_or_none()
+        return dict(row) if row is not None else None
+    finally:
+        await db_session.rollback()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("actor_role", ["owner", "manager"])
+@pytest.mark.parametrize("fields", ["name", "email", "both"])
+async def test_update_customer(
+    client, db_session, customers_for_read, actor_role, fields,
+):
+    organization_id = customers_for_read["organization_ids"][0]
+    customer_id = customers_for_read["customer_id"]
+    token = create_access_token(
+        customers_for_read["user_ids"][actor_role]
+    )
+    before = await read_customer_state(db_session, customer_id)
+    assert before is not None
+
+    new_email = f"{uuid4()}@example.com"
+    changes = {}
+    if fields in ("name", "both"):
+        changes["name"] = " Новое имя "
+    if fields in ("email", "both"):
+        changes["email"] = f" {new_email.upper()} "
+
+    response = await client.patch(
+        f"/organization/{organization_id}/customers/{customer_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json=changes,
+    )
+
+    assert response.status_code == 200, response.text
+
+    expected = dict(before)
+    if "name" in changes:
+        expected["name"] = "Новое имя"
+    if "email" in changes:
+        expected["email"] = new_email
+
+    after = await read_customer_state(db_session, customer_id)
+    assert after == expected
+
+    data = response.json()
+    assert data["id"] == str(customer_id)
+    assert data["organization_id"] == str(organization_id)
+    assert data["name"] == expected["name"]
+    assert data["email"] == expected["email"]
+
+
+@pytest.mark.asyncio
+async def test_update_customer_conflict_rolls_back_all_changes(
+    client, db_session, customers_for_read,
+):
+    organization_id = customers_for_read["organization_ids"][0]
+    customer_id = customers_for_read["customer_id"]
+    token = create_access_token(customers_for_read["user_ids"]["owner"])
+    occupied_email = f"{uuid4()}@example.com"
+
+    # Второй клиент в той же организации занимает email.
+    db_session.add(
+        Customer(
+            organization_id=organization_id,
+            name="Другой клиент",
+            email=occupied_email,
+        )
+    )
+    await db_session.commit()
+
+    before = await read_customer_state(db_session, customer_id)
+    assert before is not None
+
+    response = await client.patch(
+        f"/organization/{organization_id}/customers/{customer_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "name": "Это имя не должно сохраниться",
+            "email": f" {occupied_email.upper()} ",
+        },
+    )
+
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"] == (
+        "Клиент с таким email уже существует в организации"
+    )
+
+    after = await read_customer_state(db_session, customer_id)
+    assert after == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("email_source", ["current", "other_organization"])
+async def test_update_customer_allows_non_conflicting_email(
+    client, db_session, customers_for_read, email_source,
+):
+    organization_id = customers_for_read["organization_ids"][0]
+    customer_id = customers_for_read["customer_id"]
+    token = create_access_token(customers_for_read["user_ids"]["owner"])
+
+    before = await read_customer_state(db_session, customer_id)
+    assert before is not None
+    email = before["email"]
+
+    if email_source == "other_organization":
+        other = await read_customer_state(
+            db_session, customers_for_read["other_customer_id"]
+        )
+        assert other is not None
+        email = other["email"]
+
+    response = await client.patch(
+        f"/organization/{organization_id}/customers/{customer_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"email": f" {email.upper()} "},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["email"] == email
+
+    expected = {**before, "email": email}
+    assert await read_customer_state(db_session, customer_id) == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {},
+        {"name": None},
+        {"email": None},
+        {"name": "   "},
+        {"name": "А" * 256},
+        {"email": "not-an-email"},
+        {"name": "Новое имя", "email": None},
+    ],
+    ids=[
+        "empty",
+        "null-name",
+        "null-email",
+        "blank-name",
+        "long-name",
+        "invalid-email",
+        "valid-name-with-null-email",
+    ],
+)
+async def test_update_customer_rejects_invalid_data(
+    client, db_session, customers_for_read, changes,
+):
+    organization_id = customers_for_read["organization_ids"][0]
+    customer_id = customers_for_read["customer_id"]
+    token = create_access_token(customers_for_read["user_ids"]["owner"])
+    before = await read_customer_state(db_session, customer_id)
+    assert before is not None
+
+    response = await client.patch(
+        f"/organization/{organization_id}/customers/{customer_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json=changes,
+    )
+
+    assert response.status_code == 422, response.text
+    assert await read_customer_state(db_session, customer_id) == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("actor_role", ["owner", "manager"])
+async def test_delete_customer(
+    client, db_session, customers_for_read, actor_role,
+):
+    organization_id = customers_for_read["organization_ids"][0]
+    customer_id = customers_for_read["customer_id"]
+    other_customer_id = customers_for_read["other_customer_id"]
+    token = create_access_token(
+        customers_for_read["user_ids"][actor_role]
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+    url = f"/organization/{organization_id}/customers/{customer_id}"
+
+    assert await read_customer_state(db_session, customer_id) is not None
+    other_before = await read_customer_state(db_session, other_customer_id)
+    assert other_before is not None
+
+    response = await client.delete(url, headers=headers)
+
+    assert response.status_code == 204, response.text
+    assert response.content == b""
+    assert await read_customer_state(db_session, customer_id) is None
+    assert (
+        await read_customer_state(db_session, other_customer_id)
+        == other_before
+    )
+
+    get_response = await client.get(url, headers=headers)
+    assert get_response.status_code == 404, get_response.text
+
+    second_delete = await client.delete(url, headers=headers)
+    assert second_delete.status_code == 404, second_delete.text
+    assert second_delete.json()["detail"] == "Клиент не найден"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["PATCH", "DELETE"])
+@pytest.mark.parametrize(
+    ("actor_role", "expected_status"),
+    [
+        ("viewer", 403),
+        ("outsider", 404),
+        (None, 401),
+    ],
+)
+async def test_customer_mutation_requires_permission(
+    client, db_session, customers_for_read,
+    method, actor_role, expected_status,
+):
+    organization_id = customers_for_read["organization_ids"][0]
+    customer_id = customers_for_read["customer_id"]
+    before = await read_customer_state(db_session, customer_id)
+    assert before is not None
+
+    headers = {}
+    if actor_role is not None:
+        token = create_access_token(
+            customers_for_read["user_ids"][actor_role]
+        )
+        headers["Authorization"] = f"Bearer {token}"
+
+    kwargs = {"headers": headers}
+    if method == "PATCH":
+        kwargs["json"] = {"name": "Запрещённое изменение"}
+
+    response = await client.request(
+        method,
+        f"/organization/{organization_id}/customers/{customer_id}",
+        **kwargs,
+    )
+
+    assert response.status_code == expected_status, response.text
+    if expected_status == 401:
+        assert response.headers["WWW-Authenticate"] == "Bearer"
+
+    assert await read_customer_state(db_session, customer_id) == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["PATCH", "DELETE"])
+async def test_customer_mutation_is_scoped_to_organization(
+    client, db_session, customers_for_read, method,
+):
+    organization_id = customers_for_read["organization_ids"][0]
+    other_customer_id = customers_for_read["other_customer_id"]
+    token = create_access_token(customers_for_read["user_ids"]["owner"])
+    before = await read_customer_state(db_session, other_customer_id)
+    assert before is not None
+
+    kwargs = {"headers": {"Authorization": f"Bearer {token}"}}
+    if method == "PATCH":
+        kwargs["json"] = {"name": "Запрещённое изменение"}
+
+    # Даже владелец обеих организаций не должен изменять
+    # клиента второй через URL первой.
+    response = await client.request(
+        method,
+        f"/organization/{organization_id}/customers/{other_customer_id}",
+        **kwargs,
+    )
+
+    assert response.status_code == 404, response.text
+    assert response.json()["detail"] == "Клиент не найден"
+    assert await read_customer_state(db_session, other_customer_id) == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["PATCH", "DELETE"])
+@pytest.mark.parametrize("missing", ["customer", "organization"])
+async def test_customer_mutation_returns_not_found(
+    client, db_session, customers_for_read, method, missing,
+):
+    organization_id = customers_for_read["organization_ids"][0]
+    existing_customer_id = customers_for_read["customer_id"]
+    customer_id = existing_customer_id
+    token = create_access_token(customers_for_read["user_ids"]["owner"])
+
+    before = await read_customer_state(db_session, existing_customer_id)
+    assert before is not None
+
+    if missing == "customer":
+        customer_id = uuid4()
+        expected_detail = "Клиент не найден"
+    else:
+        organization_id = uuid4()
+        expected_detail = "Организация не найдена"
+
+    kwargs = {"headers": {"Authorization": f"Bearer {token}"}}
+    if method == "PATCH":
+        kwargs["json"] = {"name": "Новое имя"}
+
+    response = await client.request(
+        method,
+        f"/organization/{organization_id}/customers/{customer_id}",
+        **kwargs,
+    )
+
+    assert response.status_code == 404, response.text
+    assert response.json()["detail"] == expected_detail
+    assert (
+        await read_customer_state(db_session, existing_customer_id)
+        == before
+    )

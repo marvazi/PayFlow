@@ -27,3 +27,14 @@ class CustomerRepository:
             order_by(Customer.created_at, Customer.id)
         )
         return list(res.scalars().all())
+
+    async def update(self, customer:Customer,changes: dict[str, str]) -> Customer:
+        if "name" in changes:
+            customer.name = changes["name"]
+        if "email" in changes:
+            customer.email = changes["email"]
+        await self.session.flush()
+        return customer
+    async def delete(self, customer:Customer) -> None:
+        await self.session.delete(customer)
+        await self.session.flush()

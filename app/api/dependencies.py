@@ -9,6 +9,7 @@ from app.db.session import get_session, session_factory
 from app.models import User
 from app.schemas.membership import MembershipResponse
 from app.services.customer import CustomerService
+from app.services.invoice import InvoiceService
 from app.services.membership import MembershipService
 from app.services.organization import OrganizationService
 from app.services.user import UserService
@@ -50,3 +51,6 @@ def get_member_service(session: AsyncSession = Depends(get_session)) -> Membersh
 
 async def get_customer_service(session: AsyncSession = Depends(get_session)) -> CustomerService:
     return CustomerService(session)
+
+async def get_invoice_service(session: AsyncSession = Depends(get_session)) -> InvoiceService:
+    return InvoiceService(session)
