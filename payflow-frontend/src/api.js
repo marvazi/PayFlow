@@ -33,3 +33,15 @@ export async function addMember(token, id, body) {
   const path = r.memberPath ? r.memberPath.replace(/\{[^}]+\}/, encodeURIComponent(id)) : `${r.base.replace(/\/$/, '')}/${encodeURIComponent(id)}/${r.memberSegment}`;
   return request(path, { token, method: 'POST', body });
 }
+
+export async function members(token, organizationId, { userId, ...options } = {}) {
+  const r = await routes();
+  const collection = r.memberPath ? r.memberPath.replace(/\{[^}]+\}/, encodeURIComponent(organizationId)) : `${r.base.replace(/\/$/, '')}/${encodeURIComponent(organizationId)}/${r.memberSegment}`;
+  const path = userId ? `${collection.replace(/\/$/, '')}/${encodeURIComponent(userId)}` : collection;
+  return request(path, { token, ...options });
+}
+export async function customers(token, organizationId, { id, ...options } = {}) {
+  const { base } = await routes();
+  const path = `${base.replace(/\/$/, '')}/${encodeURIComponent(organizationId)}/customers${id ? '/' + encodeURIComponent(id) : ''}`;
+  return request(path, { token, ...options });
+}
