@@ -2,8 +2,10 @@ from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api import invoice
 from app.core.exeptions import CustomerNotFoundError, OrganizationNotFoundError, PermissionDeniedError, \
-CustomerAlreadyExistsError
+    CustomerAlreadyExistsError, CustomerHasInvoicesError
 from app.models import Customer
 from app.repositories.customer import CustomerRepository
 from app.repositories.membership import MembershipRepository
@@ -98,19 +100,31 @@ class CustomerService:
         return created_customer
 
     async def delete_customer(self,actor_id:UUID,customer_id:UUID,organization_id:UUID) -> None:
-        async with self.session.begin():
-            membership = await self.membership_repository.get_by_user_and_organization(
-                user_id=actor_id,
-                organization_id=organization_id
-            )
-            if membership is None:
-                raise OrganizationNotFoundError("Организация не найдена")
-            if membership.role not in ('manager', 'owner'):
-                raise PermissionDeniedError("Недостаточно прав")
-            customer = await self.customer_repository.find(customer_id=customer_id, organization_id=organization_id)
-            if customer is None:
-                raise CustomerNotFoundError("Клиент не найден")
-            await self.customer_repository.delete(customer=customer)
+        try:
+            async with self.session.begin():
+                membership = await self.membership_repository.get_by_user_and_organization(
+                    user_id=actor_id,
+                    organization_id=organization_id
+                )
+                if membership is None:
+                    raise OrganizationNotFoundError("Организация не найдена")
+                if membership.role not in ('manager', 'owner'):
+                    raise PermissionDeniedError("Недостаточно прав")
+                customer = await self.customer_repository.find(customer_id=customer_id, organization_id=organization_id)
+                if customer is None:
+                    raise CustomerNotFoundError("Клиент не найден")
+                await self.customer_repository.delete(customer=customer)
+        except IntegrityError as exc:
+            cause = exc.orig.__cause__
+            if (
+                    getattr(cause, "sqlstate", None) == "23001"
+                    and getattr(cause, "constraint_name", None)
+                    == "invoices_customer_id_fkey"
+            ):
+                raise CustomerHasInvoicesError(
+                    "Нельзя удалить клиента, у которого есть счета"
+                ) from exc
+            raise
 
 
 

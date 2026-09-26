@@ -1,21 +1,15 @@
 from uuid import UUID
 from fastapi import APIRouter, HTTPException
 from fastapi.params import Depends
-from sqlalchemy.ext.asyncio import result
 from starlette import status
 from starlette.responses import Response
-
 from app.schemas.customer import CustomerResponse, CustomerCreate, CustomerUpdate
-from app.schemas.membership import MembershipCreate, MembershipResponse,MembershipUpdate
 from app.services.customer import CustomerService
-from app.services.membership import MembershipService
-from app.api.dependencies import get_current_user, get_organization_service, get_member_service, get_customer_service
+from app.api.dependencies import get_current_user, get_customer_service
 from app.core.exeptions import OrganizationNotFoundError, \
-    MembershipAlreadyExistsError, UserNotFoundError, PermissionDeniedError, InvalidMembershipRoleError, \
-    MembershipNotFoundError, CustomerAlreadyExistsError, CustomerNotFoundError
+    PermissionDeniedError, \
+    CustomerAlreadyExistsError, CustomerNotFoundError, CustomerHasInvoicesError
 from app.models import User
-from app.schemas.organization import OrganizationResponse, OrganizationCreate
-from app.services.organization import OrganizationService
 
 
 
@@ -115,4 +109,7 @@ async def delete_customer(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionDeniedError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except CustomerHasInvoicesError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+

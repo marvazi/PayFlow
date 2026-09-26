@@ -1,5 +1,3 @@
-
-
 class EmailAlreadyExistsError(Exception):
     pass
 class CustomerNotFoundError(Exception):
@@ -20,9 +18,11 @@ class InvalidMembershipRoleError(Exception):
     pass
 class MembershipNotFoundError(Exception):
     pass
-
+class CustomerHasInvoicesError(Exception):
+    pass
 class InvoiceNotFoundError(Exception):
     pass
-
 class CustomerAlreadyExistsError(Exception):
+    pass
+class InvoiceNotEditableError(Exception):
     pass

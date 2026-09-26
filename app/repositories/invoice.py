@@ -21,6 +21,13 @@ class InvoiceRepository:
         self.session.add(invoice)
         await self.session.flush()
         return invoice
+    async def update(self,invoice:Invoice,changes:dict[str, str | int]) -> Invoice:
+        if "description" in changes:
+            invoice.description = changes["description"]
+        if "amount_minor" in changes:
+            invoice.amount_minor = changes["amount_minor"]
+        await self.session.flush()
+        return invoice
 
     async def get(self,invoice_id:UUID,organization_id:UUID) -> Invoice | None:
         result = await self.session.execute(
@@ -38,3 +45,6 @@ class InvoiceRepository:
             order_by(Invoice.created_at, Invoice.id)
         )
         return list(result.scalars().all())
+    async def delete(self,invoice:Invoice):
+        await self.session.delete(invoice)
+        await self.session.flush()

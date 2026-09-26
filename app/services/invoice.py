@@ -3,16 +3,13 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exeptions import CustomerNotFoundError, OrganizationNotFoundError, PermissionDeniedError, \
-    CustomerAlreadyExistsError, InvoiceNotFoundError
+    CustomerAlreadyExistsError, InvoiceNotFoundError, InvoiceNotEditableError
 from app.models import Customer, Invoice
 from app.repositories.customer import CustomerRepository
 from app.repositories.invoice import InvoiceRepository
 from app.repositories.membership import MembershipRepository
 from app.schemas.customer import CustomerCreate, CustomerUpdate
-from app.schemas.invoice import InvoiceCreate
-
-
-
+from app.schemas.invoice import InvoiceCreate, InvoiceUpdate
 
 
 class InvoiceService:
@@ -40,6 +37,37 @@ class InvoiceService:
                 amount_minor=data.amount_minor,
             )
         return created_invoice
+
+    async def update(self,actor_id:UUID,invoice_id:UUID,data: InvoiceUpdate,organization_id:UUID,) -> Invoice:
+        async with self.session.begin():
+            membership = await self.membership_repository.get_by_user_and_organization(user_id=actor_id,organization_id=organization_id)
+            if membership is None:
+                raise OrganizationNotFoundError("Организация не найдена")
+            if membership.role not in ('manager', 'owner'):
+                raise PermissionDeniedError("Недостаточно прав")
+            invoice = await self.invoice_repository.get(invoice_id=invoice_id, organization_id=organization_id)
+            if invoice is None:
+                raise InvoiceNotFoundError("Счет не найден")
+            if invoice.status != "draft":
+                raise InvoiceNotEditableError("Можно редактировать только черновик счёта")
+            changes = data.model_dump(exclude_unset=True)
+            await self.invoice_repository.update(invoice=invoice,changes=changes)
+            return invoice
+
+    async def delete(self,actor_id:UUID,invoice_id:UUID,organization_id:UUID):
+        async with self.session.begin():
+            membership = await self.membership_repository.get_by_user_and_organization(
+                user_id=actor_id,
+                organization_id=organization_id
+            )
+            if membership is None:
+                raise OrganizationNotFoundError("Организация не найдена")
+            if membership.role not in ('manager', 'owner'):
+                raise PermissionDeniedError("Недостаточно прав")
+            invoice = await self.invoice_repository.get(invoice_id=invoice_id, organization_id=organization_id)
+            if invoice is None:
+                raise CustomerNotFoundError("Счет не найден")
+            await self.invoice_repository.delete(invoice=invoice)
 
 
     async def list_invoices(self,actor_id:UUID,organization_id:UUID) -> list[Invoice]:
