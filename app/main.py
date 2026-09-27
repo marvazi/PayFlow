@@ -10,12 +10,18 @@ from app.api.auth import router as auth_router
 from app.api.organization import router as organization_router
 from app.api.customer import router as customer_router
 from app.api.invoice import router as invoice_router
+from app.api.payment import router as payment_router
+
+
+
 
 app = FastAPI(title="PayFlow")
 app.include_router(auth_router)
 app.include_router(organization_router)
 app.include_router(customer_router)
 app.include_router(invoice_router)
+app.include_router(payment_router)
+
 
 
 @app.get("/health", tags=["health"])

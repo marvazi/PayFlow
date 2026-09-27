@@ -12,6 +12,7 @@ from app.services.customer import CustomerService
 from app.services.invoice import InvoiceService
 from app.services.membership import MembershipService
 from app.services.organization import OrganizationService
+from app.services.payment import PaymentService
 from app.services.user import UserService
 
 
@@ -54,3 +55,5 @@ async def get_customer_service(session: AsyncSession = Depends(get_session)) -> 
 
 async def get_invoice_service(session: AsyncSession = Depends(get_session)) -> InvoiceService:
     return InvoiceService(session)
+async def  get_payment_service(session: AsyncSession = Depends(get_session)) -> PaymentService:
+    return PaymentService(session)

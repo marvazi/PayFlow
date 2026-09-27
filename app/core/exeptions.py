@@ -26,3 +26,9 @@ class CustomerAlreadyExistsError(Exception):
     pass
 class InvoiceNotEditableError(Exception):
     pass
+class InvalidInvoiceStatusError(Exception):
+    pass
+class PaymentNotFoundError(Exception):
+    pass
+class PaymentAlreadyPendingError(Exception):
+    pass

@@ -1,21 +1,13 @@
 from uuid import UUID
 from fastapi import APIRouter, HTTPException
 from fastapi.params import Depends
-from sqlalchemy.ext.asyncio import result
 from starlette import status
-from starlette.responses import Response
-
 from app.schemas.invoice import InvoiceResponse, InvoiceCreate, InvoiceUpdate
-from app.schemas.membership import MembershipCreate, MembershipResponse,MembershipUpdate
 from app.services.invoice import InvoiceService
-from app.services.membership import MembershipService
-from app.api.dependencies import get_current_user, get_organization_service, get_member_service, get_invoice_service
-from app.core.exeptions import OrganizationNotFoundError, \
-    MembershipAlreadyExistsError, UserNotFoundError, PermissionDeniedError, InvalidMembershipRoleError, \
-    MembershipNotFoundError, InvoiceNotFoundError, CustomerNotFoundError, InvoiceNotEditableError
+from app.api.dependencies import get_current_user,get_invoice_service
+from app.core.exeptions import OrganizationNotFoundError,PermissionDeniedError, InvoiceNotFoundError, CustomerNotFoundError, InvoiceNotEditableError, \
+    InvalidInvoiceStatusError
 from app.models import User, Invoice
-from app.schemas.organization import OrganizationResponse, OrganizationCreate
-from app.services.organization import OrganizationService
 
 
 router = APIRouter(
@@ -61,7 +53,11 @@ async def get_invoice(
     except (OrganizationNotFoundError, InvoiceNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-@router.patch("/{invoice_id}", status_code=status.HTTP_200_OK)
+@router.patch(
+    "/{invoice_id}",
+    response_model=InvoiceResponse,
+    status_code=status.HTTP_200_OK,
+)
 async def update_invoice(
         invoice_id: UUID,
         organization_id: UUID,
@@ -98,3 +94,45 @@ async def get_invoices(
         return list_invoices
     except (OrganizationNotFoundError, InvoiceNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+@router.post("/{invoice_id}/issue",response_model=InvoiceResponse, status_code=status.HTTP_200_OK)
+async def issue_invoice(
+        invoice_id: UUID,
+        organization_id: UUID,
+        service: InvoiceService = Depends(get_invoice_service),
+        user: User = Depends(get_current_user)
+)->Invoice:
+    try:
+        updated_invoice = await service.issue_invoice(
+            actor_id=user.id,
+            invoice_id=invoice_id,
+            organization_id=organization_id,
+        )
+        return updated_invoice
+    except (OrganizationNotFoundError, InvoiceNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InvalidInvoiceStatusError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PermissionDeniedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+@router.post("/{invoice_id}/cancel",response_model=InvoiceResponse, status_code=status.HTTP_200_OK)
+async def cancel_invoice(
+        invoice_id: UUID,
+        organization_id: UUID,
+        service: InvoiceService = Depends(get_invoice_service),
+        user: User = Depends(get_current_user)
+)->Invoice:
+    try:
+        canceled_invoice = await service.cancel_invoice(
+            actor_id=user.id,
+            invoice_id=invoice_id,
+            organization_id=organization_id,
+        )
+        return canceled_invoice
+    except (OrganizationNotFoundError, InvoiceNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InvalidInvoiceStatusError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PermissionDeniedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc

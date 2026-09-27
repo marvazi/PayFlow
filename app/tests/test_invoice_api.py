@@ -2,12 +2,29 @@ from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import delete, select
-
+from sqlalchemy import delete, select, update
 from app.core.security import create_access_token
 from app.models import Customer, Membership, Organization, User
 from app.models.invoice import Invoice
 
+async def read_invoice_state(db_session, invoice_id):
+    await db_session.rollback()
+    try:
+        result = await db_session.execute(
+            select(
+                Invoice.id,
+                Invoice.organization_id,
+                Invoice.customer_id,
+                Invoice.description,
+                Invoice.amount_minor,
+                Invoice.currency,
+                Invoice.status,
+                Invoice.created_at,
+            ).where(Invoice.id == invoice_id)
+        )
+        return dict(result.mappings().one())
+    finally:
+        await db_session.rollback()
 
 @pytest_asyncio.fixture
 async def invoice_data(db_session):
@@ -503,3 +520,277 @@ async def test_delete_customer_without_invoices(
         assert result.scalar_one_or_none() is None
     finally:
         await db_session.rollback()
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["owner", "manager"])
+@pytest.mark.parametrize(
+    ("action", "initial_status", "expected_status"),
+    [
+        ("issue", "draft", "issued"),
+        ("cancel", "draft", "cancelled"),
+        ("cancel", "issued", "cancelled"),
+    ],
+)
+async def test_invoice_status_transition_success(
+    client,
+    db_session,
+    invoice_data,
+    role,
+    action,
+    initial_status,
+    expected_status,
+):
+    invoice_id = invoice_data["invoice_id"]
+
+    await db_session.execute(
+        update(Invoice)
+        .where(Invoice.id == invoice_id)
+        .values(status=initial_status)
+    )
+    await db_session.commit()
+
+    before = await read_invoice_state(db_session, invoice_id)
+
+    response = await client.post(
+        f"{invoices_url(invoice_data)}/{invoice_id}/{action}",
+        headers=invoice_data["headers"][role],
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+    assert data["id"] == str(invoice_id)
+    assert data["status"] == expected_status
+    assert data["amount_minor"] == before["amount_minor"]
+    assert data["description"] == before["description"]
+    assert data["customer_id"] == str(before["customer_id"])
+    assert data["organization_id"] == str(before["organization_id"])
+
+    # В БД должен измениться только статус.
+    after = await read_invoice_state(db_session, invoice_id)
+    assert after == {**before, "status": expected_status}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["owner", "manager"])
+@pytest.mark.parametrize(
+    ("action", "initial_status"),
+    [
+        ("issue", "issued"),
+        ("issue", "paid"),
+        ("issue", "cancelled"),
+        ("cancel", "paid"),
+        ("cancel", "cancelled"),
+    ],
+)
+async def test_invoice_status_transition_rejects_invalid_state(
+    client,
+    db_session,
+    invoice_data,
+    role,
+    action,
+    initial_status,
+):
+    invoice_id = invoice_data["invoice_id"]
+
+    await db_session.execute(
+        update(Invoice)
+        .where(Invoice.id == invoice_id)
+        .values(status=initial_status)
+    )
+    await db_session.commit()
+
+    before = await read_invoice_state(db_session, invoice_id)
+
+    response = await client.post(
+        f"{invoices_url(invoice_data)}/{invoice_id}/{action}",
+        headers=invoice_data["headers"][role],
+    )
+
+    assert response.status_code == 409, response.text
+    assert await read_invoice_state(db_session, invoice_id) == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["issue", "cancel"])
+@pytest.mark.parametrize(
+    ("role", "expected_status"),
+    [
+        ("viewer", 403),
+        ("outsider", 404),
+    ],
+)
+async def test_invoice_status_transition_checks_permissions(
+    client,
+    db_session,
+    invoice_data,
+    action,
+    role,
+    expected_status,
+):
+    invoice_id = invoice_data["invoice_id"]
+    before = await read_invoice_state(db_session, invoice_id)
+
+    response = await client.post(
+        f"{invoices_url(invoice_data)}/{invoice_id}/{action}",
+        headers=invoice_data["headers"][role],
+    )
+
+    assert response.status_code == expected_status, response.text
+    assert await read_invoice_state(db_session, invoice_id) == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["issue", "cancel"])
+async def test_invoice_status_transition_requires_authentication(
+    client, db_session, invoice_data, action
+):
+    invoice_id = invoice_data["invoice_id"]
+    before = await read_invoice_state(db_session, invoice_id)
+
+    response = await client.post(
+        f"{invoices_url(invoice_data)}/{invoice_id}/{action}",
+    )
+
+    assert response.status_code == 401, response.text
+    assert await read_invoice_state(db_session, invoice_id) == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["issue", "cancel"])
+async def test_invoice_status_transition_missing_invoice(
+    client, invoice_data, action
+):
+    response = await client.post(
+        f"{invoices_url(invoice_data)}/{uuid4()}/{action}",
+        headers=invoice_data["headers"]["owner"],
+    )
+
+    assert response.status_code == 404, response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["issue", "cancel"])
+async def test_invoice_status_transition_missing_organization(
+    client, db_session, invoice_data, action
+):
+    invoice_id = invoice_data["invoice_id"]
+    before = await read_invoice_state(db_session, invoice_id)
+
+    response = await client.post(
+        f"/organization/{uuid4()}/invoices/{invoice_id}/{action}",
+        headers=invoice_data["headers"]["owner"],
+    )
+
+    assert response.status_code == 404, response.text
+    assert await read_invoice_state(db_session, invoice_id) == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["issue", "cancel"])
+async def test_invoice_status_transition_other_organization(
+    client, db_session, invoice_data, action
+):
+    other_invoice_id = invoice_data["other_invoice_id"]
+    before = await read_invoice_state(db_session, other_invoice_id)
+
+    # ID чужого счёта передаём в URL своей организации.
+    response = await client.post(
+        f"{invoices_url(invoice_data)}/{other_invoice_id}/{action}",
+        headers=invoice_data["headers"]["owner"],
+    )
+
+    assert response.status_code == 404, response.text
+    assert await read_invoice_state(
+        db_session, other_invoice_id
+    ) == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("action", "expected_status"),
+    [
+        ("issue", "issued"),
+        ("cancel", "cancelled"),
+    ],
+)
+async def test_invoice_status_transition_repeated_request(
+    client, db_session, invoice_data, action, expected_status
+):
+    invoice_id = invoice_data["invoice_id"]
+    url = f"{invoices_url(invoice_data)}/{invoice_id}/{action}"
+    headers = invoice_data["headers"]["owner"]
+
+    first_response = await client.post(url, headers=headers)
+
+    assert first_response.status_code == 200, first_response.text
+    assert first_response.json()["status"] == expected_status
+
+    after_first = await read_invoice_state(db_session, invoice_id)
+
+    second_response = await client.post(url, headers=headers)
+
+    assert second_response.status_code == 409, second_response.text
+    assert await read_invoice_state(db_session, invoice_id) == after_first
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["issue", "cancel"])
+async def test_invoice_status_transition_blocks_editing(
+    client, db_session, invoice_data, action
+):
+    invoice_id = invoice_data["invoice_id"]
+    url = f"{invoices_url(invoice_data)}/{invoice_id}"
+    headers = invoice_data["headers"]["owner"]
+
+    transition_response = await client.post(
+        f"{url}/{action}",
+        headers=headers,
+    )
+    assert transition_response.status_code == 200, transition_response.text
+
+    before_patch = await read_invoice_state(db_session, invoice_id)
+
+    patch_response = await client.patch(
+        url,
+        headers=headers,
+        json={
+            "description": "Недопустимое изменение",
+            "amount_minor": 99999,
+        },
+    )
+
+    assert patch_response.status_code == 409, patch_response.text
+    assert await read_invoice_state(db_session, invoice_id) == before_patch
+
+
+@pytest.mark.asyncio
+async def test_invoice_status_transition_full_lifecycle(
+    client, db_session, invoice_data
+):
+    invoice_id = invoice_data["invoice_id"]
+    url = f"{invoices_url(invoice_data)}/{invoice_id}"
+    headers = invoice_data["headers"]["manager"]
+    before = await read_invoice_state(db_session, invoice_id)
+
+    issued = await client.post(f"{url}/issue", headers=headers)
+    assert issued.status_code == 200, issued.text
+    assert issued.json()["status"] == "issued"
+
+    cancelled = await client.post(f"{url}/cancel", headers=headers)
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["status"] == "cancelled"
+
+    # Отменённый счёт нельзя снова выставить.
+    reissued = await client.post(f"{url}/issue", headers=headers)
+    assert reissued.status_code == 409, reissued.text
+
+    # Счёт остаётся доступен для чтения.
+    fetched = await client.get(url, headers=headers)
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.json()["status"] == "cancelled"
+
+    assert await read_invoice_state(db_session, invoice_id) == {
+        **before,
+        "status": "cancelled",
+    }

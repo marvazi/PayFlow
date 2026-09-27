@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exeptions import CustomerNotFoundError, OrganizationNotFoundError, PermissionDeniedError, \
-    CustomerAlreadyExistsError, InvoiceNotFoundError, InvoiceNotEditableError
+    CustomerAlreadyExistsError, InvoiceNotFoundError, InvoiceNotEditableError, InvalidInvoiceStatusError
 from app.models import Customer, Invoice
 from app.repositories.customer import CustomerRepository
 from app.repositories.invoice import InvoiceRepository
@@ -45,7 +45,7 @@ class InvoiceService:
                 raise OrganizationNotFoundError("Организация не найдена")
             if membership.role not in ('manager', 'owner'):
                 raise PermissionDeniedError("Недостаточно прав")
-            invoice = await self.invoice_repository.get(invoice_id=invoice_id, organization_id=organization_id)
+            invoice = await self.invoice_repository.get_for_update(invoice_id=invoice_id, organization_id=organization_id)
             if invoice is None:
                 raise InvoiceNotFoundError("Счет не найден")
             if invoice.status != "draft":
@@ -53,6 +53,55 @@ class InvoiceService:
             changes = data.model_dump(exclude_unset=True)
             await self.invoice_repository.update(invoice=invoice,changes=changes)
             return invoice
+
+    async def issue_invoice(
+            self,
+            actor_id: UUID,
+            organization_id: UUID,
+            invoice_id: UUID,
+    ) -> Invoice:
+        async with self.session.begin():
+            membership = await self.membership_repository.get_by_user_and_organization(
+                user_id=actor_id,
+                organization_id=organization_id
+            )
+            if membership is None:
+                raise OrganizationNotFoundError("Организация не найдена")
+            if membership.role not in ('manager', 'owner'):
+                raise PermissionDeniedError("Недостаточно прав")
+            invoice = await self.invoice_repository.get_for_update(invoice_id=invoice_id,organization_id=organization_id)
+            if invoice is None:
+                raise InvoiceNotFoundError("Счёт не найден")
+            if invoice.status != "draft":
+                raise InvalidInvoiceStatusError("Выставить можно только черновик счёта")
+            await self.invoice_repository.update_status(status="issued",invoice=invoice)
+        return invoice
+    
+    async def cancel_invoice(
+            self,
+            actor_id: UUID,
+            invoice_id: UUID,
+            organization_id: UUID,
+    )-> Invoice:
+        async with self.session.begin():
+            membership = await self.membership_repository.get_by_user_and_organization(
+                user_id=actor_id,
+                organization_id=organization_id
+            )
+            if membership is None:
+                raise OrganizationNotFoundError("Организация не найдена")
+            if membership.role not in ('manager', 'owner'):
+                raise PermissionDeniedError("Недостаточно прав")
+            invoice = await self.invoice_repository.get_for_update(
+                invoice_id=invoice_id,
+                organization_id=organization_id
+            )
+            if invoice is None:
+                raise InvoiceNotFoundError("Счёт не найден")
+            if invoice.status not in ("issued","draft"):
+                raise InvalidInvoiceStatusError("Отменить можно только черновик или выставленный счёт")
+            await self.invoice_repository.update_status(status="cancelled",invoice=invoice)
+        return invoice
 
     async def delete(self,actor_id:UUID,invoice_id:UUID,organization_id:UUID):
         async with self.session.begin():

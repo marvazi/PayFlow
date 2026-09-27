@@ -3,7 +3,6 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api import invoice
 from app.core.exeptions import CustomerNotFoundError, OrganizationNotFoundError, PermissionDeniedError, \
     CustomerAlreadyExistsError, CustomerHasInvoicesError
 from app.models import Customer

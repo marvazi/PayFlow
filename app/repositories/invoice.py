@@ -37,6 +37,22 @@ class InvoiceRepository:
             )
         invoice = result.scalar_one_or_none()
         return invoice
+    async def get_for_update(self,invoice_id:UUID,organization_id:UUID) -> Invoice | None:
+        result = await self.session.execute(
+            select(Invoice).
+            where(Invoice.id == invoice_id).
+            where(Invoice.organization_id == organization_id).
+            with_for_update()
+        )
+
+        invoice = result.scalar_one_or_none()
+        return invoice
+
+    async def update_status(self, invoice: Invoice, status: str) -> Invoice:
+        invoice.status = status
+        await self.session.flush()
+        return invoice
+
 
     async def list_by_organization(self,organization_id:UUID) -> list[Invoice]:
         result = await self.session.execute(
@@ -45,6 +61,7 @@ class InvoiceRepository:
             order_by(Invoice.created_at, Invoice.id)
         )
         return list(result.scalars().all())
+
     async def delete(self,invoice:Invoice):
         await self.session.delete(invoice)
         await self.session.flush()

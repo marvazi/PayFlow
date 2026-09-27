@@ -1,0 +1,57 @@
+from uuid import UUID
+
+from certifi import where
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import Payment
+from app.models.invoice import Invoice
+
+
+class PaymentRepository:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def create(self,invoice_id:UUID,organization_id:UUID,amount_minor:int,currency:str) -> Payment:
+        payment = Payment(
+            invoice_id=invoice_id,
+            organization_id=organization_id,
+            amount_minor=amount_minor,
+            currency=currency,
+            status="pending"
+        )
+        self.session.add(payment)
+        await self.session.flush()
+        return payment
+
+    async def get(self,payment_id:UUID,organization_id:UUID) -> Payment | None:
+        result = await self.session.execute(
+            select(Payment)
+            .where(Payment.id==payment_id)
+            .where(Payment.organization_id==organization_id)
+        )
+        payment = result.scalar_one_or_none()
+        return payment
+
+    async def list_by_invoice(self,invoice_id:UUID,organization_id:UUID) -> list[Payment]:
+        result = await self.session.execute(
+            select(Payment).
+            where(Payment.invoice_id == invoice_id).
+            where(Payment.organization_id==organization_id).
+            order_by(Payment.created_at, Payment.id)
+        )
+        return list(result.scalars().all())
+
+    async def get_pending_by_invoice(
+            self,
+            invoice_id: UUID,
+            organization_id: UUID,
+    ) -> Payment | None:
+        result = await self.session.execute(
+            select(Payment).
+            where(Payment.invoice_id == invoice_id).
+            where(Payment.organization_id==organization_id).
+            where(Payment.status == "pending")
+        )
+        payment = result.scalar_one_or_none()
+        return payment

@@ -1,10 +1,14 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
+
 from sqlalchemy import DateTime, String, func, ForeignKey, BIGINT, CheckConstraint
 from uuid import uuid4, UUID
 from sqlalchemy.orm import mapped_column, Mapped, relationship
 from app.db.base import Base
 from app.models.customer import Customer
 from app.models.organization import Organization
+
+
 
 
 class Invoice(Base):
@@ -29,7 +33,10 @@ class Invoice(Base):
         ForeignKey("customers.id", ondelete="RESTRICT")
     )
     customer: Mapped["Customer"] = relationship(back_populates="invoices")
-
+    payments: Mapped[list["Payment"]] = relationship(
+        back_populates="invoice",
+        passive_deletes="all",
+    )
     __table_args__ = (
         CheckConstraint(
             "amount_minor > 0",
@@ -41,3 +48,7 @@ class Invoice(Base):
         )
     )
 
+
+
+if TYPE_CHECKING:
+    from app.models.payment import Payment
