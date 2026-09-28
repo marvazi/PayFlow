@@ -26,7 +26,17 @@ async def db_session() -> AsyncIterator[AsyncSession]:
             yield session
     finally:
         await engine.dispose()
-
+@pytest_asyncio.fixture
+async def concurrent_session_factory():
+    engine = create_async_engine(TEST_DATABASE_URL)
+    factory = async_sessionmaker(
+        bind=engine,
+        expire_on_commit=False,
+    )
+    try:
+        yield factory
+    finally:
+        await engine.dispose()
 @pytest_asyncio.fixture()
 async def auth_db_session() -> AsyncIterator[AsyncSession]:
     engine = create_async_engine(TEST_DATABASE_URL)

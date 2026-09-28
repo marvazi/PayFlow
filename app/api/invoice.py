@@ -5,8 +5,9 @@ from starlette import status
 from app.schemas.invoice import InvoiceResponse, InvoiceCreate, InvoiceUpdate
 from app.services.invoice import InvoiceService
 from app.api.dependencies import get_current_user,get_invoice_service
-from app.core.exeptions import OrganizationNotFoundError,PermissionDeniedError, InvoiceNotFoundError, CustomerNotFoundError, InvoiceNotEditableError, \
-    InvalidInvoiceStatusError
+from app.core.exeptions import OrganizationNotFoundError, PermissionDeniedError, InvoiceNotFoundError, \
+    CustomerNotFoundError, InvoiceNotEditableError, \
+    InvalidInvoiceStatusError, InvoiceHasPendingPaymentError
 from app.models import User, Invoice
 
 
@@ -132,7 +133,7 @@ async def cancel_invoice(
         return canceled_invoice
     except (OrganizationNotFoundError, InvoiceNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except InvalidInvoiceStatusError as exc:
+    except (InvalidInvoiceStatusError,InvoiceHasPendingPaymentError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except PermissionDeniedError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc

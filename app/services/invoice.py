@@ -3,11 +3,13 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exeptions import CustomerNotFoundError, OrganizationNotFoundError, PermissionDeniedError, \
-    CustomerAlreadyExistsError, InvoiceNotFoundError, InvoiceNotEditableError, InvalidInvoiceStatusError
+    CustomerAlreadyExistsError, InvoiceNotFoundError, InvoiceNotEditableError, InvalidInvoiceStatusError, \
+    InvoiceHasPendingPaymentError
 from app.models import Customer, Invoice
 from app.repositories.customer import CustomerRepository
 from app.repositories.invoice import InvoiceRepository
 from app.repositories.membership import MembershipRepository
+from app.repositories.payment import PaymentRepository
 from app.schemas.customer import CustomerCreate, CustomerUpdate
 from app.schemas.invoice import InvoiceCreate, InvoiceUpdate
 
@@ -18,6 +20,8 @@ class InvoiceService:
         self.customer_repository = CustomerRepository(session)
         self.membership_repository = MembershipRepository(session)
         self.invoice_repository = InvoiceRepository(session)
+        self.payment_repository = PaymentRepository(session)
+
 
     async def create(self, actor_id:UUID,organization_id:UUID,data: InvoiceCreate) -> Invoice:
         async with self.session.begin():
@@ -100,6 +104,12 @@ class InvoiceService:
                 raise InvoiceNotFoundError("Счёт не найден")
             if invoice.status not in ("issued","draft"):
                 raise InvalidInvoiceStatusError("Отменить можно только черновик или выставленный счёт")
+            pending_payment = await self.payment_repository.get_pending_by_invoice(
+                invoice_id=invoice_id,
+                organization_id=organization_id
+            )
+            if pending_payment is not None:
+                raise InvoiceHasPendingPaymentError("Нельзя отменить счёт с незавершённым платежом")
             await self.invoice_repository.update_status(status="cancelled",invoice=invoice)
         return invoice
 

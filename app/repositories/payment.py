@@ -55,3 +55,20 @@ class PaymentRepository:
         )
         payment = result.scalar_one_or_none()
         return payment
+
+    async def get_for_update(self,payment_id:UUID,organization_id:UUID) -> Payment | None:
+        result = await self.session.execute(
+            select(Payment).
+            where(Payment.id == payment_id).
+            where(Payment.organization_id == organization_id).
+            with_for_update().
+            execution_options(populate_existing=True)
+        )
+        payment = result.scalar_one_or_none()
+        return payment
+
+    async def update_status(self, payment: Payment, status:str) -> Payment:
+        payment.status = status
+        await self.session.flush()
+        await self.session.refresh(payment)
+        return payment

@@ -32,3 +32,7 @@ class PaymentNotFoundError(Exception):
     pass
 class PaymentAlreadyPendingError(Exception):
     pass
+class InvoiceHasPendingPaymentError(Exception):
+    pass
+class InvalidPaymentStatusError(Exception):
+    pass
