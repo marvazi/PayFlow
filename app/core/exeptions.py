@@ -36,3 +36,14 @@ class InvoiceHasPendingPaymentError(Exception):
     pass
 class InvalidPaymentStatusError(Exception):
     pass
+
+class PSPUnavailableError(Exception):
+    pass
+
+
+class PSPIdempotencyConflictError(Exception):
+    pass
+
+
+class PSPInvalidResponseError(Exception):
+    pass
