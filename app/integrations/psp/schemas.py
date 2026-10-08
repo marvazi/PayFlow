@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+
 class PSPTransactionResponse(BaseModel):
     id: UUID
     external_payment_id: UUID

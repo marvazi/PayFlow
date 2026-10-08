@@ -89,19 +89,13 @@ async def concurrent_case(concurrent_session_factory):
             async with session.begin():
                 for model in (Payment, Invoice, Customer, Membership):
                     await session.execute(
-                        delete(model).where(
-                            model.organization_id == organization_id
-                        )
+                        delete(model).where(model.organization_id == organization_id)
                     )
 
                 await session.execute(
-                    delete(Organization).where(
-                        Organization.id == organization_id
-                    )
+                    delete(Organization).where(Organization.id == organization_id)
                 )
-                await session.execute(
-                    delete(User).where(User.id == owner_id)
-                )
+                await session.execute(delete(User).where(User.id == owner_id))
 
 
 def synchronize_before_invoice_lock(service, barrier, monkeypatch):
@@ -123,10 +117,7 @@ def synchronize_before_invoice_lock(service, barrier, monkeypatch):
 
 
 async def run_concurrently(*operations):
-    tasks = [
-        asyncio.create_task(operation)
-        for operation in operations
-    ]
+    tasks = [asyncio.create_task(operation) for operation in operations]
 
     try:
         return await asyncio.wait_for(
@@ -147,9 +138,7 @@ async def read_state(factory, case):
     # Новая сессия: проверяем результат в БД после транзакций.
     async with factory() as session:
         invoice_status = await session.scalar(
-            select(Invoice.status).where(
-                Invoice.id == case["invoice_id"]
-            )
+            select(Invoice.status).where(Invoice.id == case["invoice_id"])
         )
 
         result = await session.execute(
@@ -181,9 +170,7 @@ async def test_concurrent_payment_creation(
     async def create():
         async with factory() as session:
             service = PaymentService(session)
-            synchronize_before_invoice_lock(
-                service, barrier, monkeypatch
-            )
+            synchronize_before_invoice_lock(service, barrier, monkeypatch)
 
             payment = await service.create(
                 actor_id=case["owner_id"],
@@ -194,14 +181,8 @@ async def test_concurrent_payment_creation(
 
     results = await run_concurrently(create(), create())
 
-    errors = [
-        result for result in results
-        if isinstance(result, BaseException)
-    ]
-    successful = [
-        result for result in results
-        if not isinstance(result, BaseException)
-    ]
+    errors = [result for result in results if isinstance(result, BaseException)]
+    successful = [result for result in results if not isinstance(result, BaseException)]
 
     assert len(successful) == 1, results
     assert len(errors) == 1, results
@@ -239,9 +220,7 @@ async def test_concurrent_identical_payment_results(
     async def process():
         async with factory() as session:
             service = PaymentService(session)
-            synchronize_before_invoice_lock(
-                service, barrier, monkeypatch
-            )
+            synchronize_before_invoice_lock(service, barrier, monkeypatch)
 
             payment = await service.process_result(
                 organization_id=case["organization_id"],
@@ -278,9 +257,7 @@ async def test_concurrent_payment_creation_and_invoice_cancellation(
     async def create():
         async with factory() as session:
             service = PaymentService(session)
-            synchronize_before_invoice_lock(
-                service, barrier, monkeypatch
-            )
+            synchronize_before_invoice_lock(service, barrier, monkeypatch)
 
             payment = await service.create(
                 actor_id=case["owner_id"],
@@ -292,9 +269,7 @@ async def test_concurrent_payment_creation_and_invoice_cancellation(
     async def cancel():
         async with factory() as session:
             service = InvoiceService(session)
-            synchronize_before_invoice_lock(
-                service, barrier, monkeypatch
-            )
+            synchronize_before_invoice_lock(service, barrier, monkeypatch)
 
             invoice = await service.cancel_invoice(
                 actor_id=case["owner_id"],
@@ -303,9 +278,7 @@ async def test_concurrent_payment_creation_and_invoice_cancellation(
             )
             return invoice.status
 
-    create_result, cancel_result = await run_concurrently(
-        create(), cancel()
-    )
+    create_result, cancel_result = await run_concurrently(create(), cancel())
 
     invoice_status, payments = await read_state(factory, case)
 
@@ -318,9 +291,7 @@ async def test_concurrent_payment_creation_and_invoice_cancellation(
     else:
         # Создание платежа получило блокировку первым.
         assert not isinstance(create_result, BaseException), create_result
-        assert isinstance(
-            cancel_result, InvoiceHasPendingPaymentError
-        ), cancel_result
+        assert isinstance(cancel_result, InvoiceHasPendingPaymentError), cancel_result
 
         assert invoice_status == "issued"
         assert len(payments) == 1

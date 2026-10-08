@@ -1,12 +1,11 @@
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select, delete
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import delete, select
 
-from app.core.exeptions import PermissionDeniedError, MembershipAlreadyExistsError
+from app.core.exeptions import MembershipAlreadyExistsError, PermissionDeniedError
+from app.models import Membership, Organization
 from app.models.user import User
-from app.models import Organization, Membership
 from app.services.membership import MembershipService
 from app.services.organization import OrganizationService
 
@@ -60,16 +59,13 @@ async def test_create_membership(db_session):
     finally:
         await db_session.rollback()
         await db_session.execute(
-            delete(Organization).where(
-                Organization.name == organization_name
-            )
+            delete(Organization).where(Organization.name == organization_name)
         )
         await db_session.execute(
-            delete(User).where(
-                User.email.in_([owner_email, new_user_email])
-            )
+            delete(User).where(User.email.in_([owner_email, new_user_email]))
         )
         await db_session.commit()
+
 
 @pytest.mark.asyncio
 async def test_manager_cannot_add_member(db_session):
@@ -135,20 +131,21 @@ async def test_manager_cannot_add_member(db_session):
     finally:
         await db_session.rollback()
         await db_session.execute(
-            delete(Organization).where(
-                Organization.name == organization_name
-            )
+            delete(Organization).where(Organization.name == organization_name)
         )
         await db_session.execute(
             delete(User).where(
-                User.email.in_([
-                    owner_email,
-                    manager_email,
-                    new_user_email,
-                ])
+                User.email.in_(
+                    [
+                        owner_email,
+                        manager_email,
+                        new_user_email,
+                    ]
+                )
             )
         )
         await db_session.commit()
+
 
 @pytest.mark.asyncio
 async def test_duplicate_membership_preserves_existing_role(db_session):
@@ -212,13 +209,9 @@ async def test_duplicate_membership_preserves_existing_role(db_session):
     finally:
         await db_session.rollback()
         await db_session.execute(
-            delete(Organization).where(
-                Organization.name == organization_name
-            )
+            delete(Organization).where(Organization.name == organization_name)
         )
         await db_session.execute(
-            delete(User).where(
-                User.email.in_([owner_email, member_email])
-            )
+            delete(User).where(User.email.in_([owner_email, member_email]))
         )
         await db_session.commit()

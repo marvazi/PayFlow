@@ -1,13 +1,13 @@
 import asyncio
 from logging.config import fileConfig
 
+from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
+
 from psp.core.config import settings
 from psp.db.base import Base
-from psp.models import Transaction
-from alembic import context
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

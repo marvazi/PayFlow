@@ -1,15 +1,16 @@
-from typing import Literal
-from uuid import UUID
 from datetime import datetime
+from typing import Self
+from uuid import UUID
+
 from pydantic import (
     BaseModel,
+    ConfigDict,
     EmailStr,
     Field,
     field_validator,
     model_validator,
-ConfigDict
 )
-from typing import Self
+
 
 class CustomerCreate(BaseModel):
     name: str = Field(max_length=255, min_length=1)
@@ -32,11 +33,12 @@ class CustomerCreate(BaseModel):
 
 class CustomerResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    id:UUID
-    email:EmailStr
-    name:str
-    created_at:datetime
+    id: UUID
+    email: EmailStr
+    name: str
+    created_at: datetime
     organization_id: UUID
+
 
 class CustomerUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)

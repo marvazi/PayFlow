@@ -3,9 +3,11 @@ from uuid import UUID, uuid4
 import pytest
 import pytest_asyncio
 from sqlalchemy import delete, select, update
+
 from app.core.security import create_access_token
 from app.models import Customer, Membership, Organization, User
 from app.models.invoice import Invoice
+
 
 async def read_invoice_state(db_session, invoice_id):
     await db_session.rollback()
@@ -26,6 +28,7 @@ async def read_invoice_state(db_session, invoice_id):
     finally:
         await db_session.rollback()
 
+
 @pytest_asyncio.fixture
 async def invoice_data(db_session):
     organization_id = uuid4()
@@ -35,36 +38,39 @@ async def invoice_data(db_session):
     invoice_id = uuid4()
     other_invoice_id = uuid4()
 
-    user_ids = {
-        role: uuid4()
-        for role in ("owner", "manager", "viewer", "outsider")
-    }
+    user_ids = {role: uuid4() for role in ("owner", "manager", "viewer", "outsider")}
     organization_ids = [organization_id, other_organization_id]
 
     try:
-        db_session.add_all([
-            User(
-                id=user_id,
-                name=role,
-                email=f"{user_id}@example.com",
-                password_hash=None,
-            )
-            for role, user_id in user_ids.items()
-        ])
-        db_session.add_all([
-            Organization(id=org_id, name=f"Test-{org_id}")
-            for org_id in organization_ids
-        ])
+        db_session.add_all(
+            [
+                User(
+                    id=user_id,
+                    name=role,
+                    email=f"{user_id}@example.com",
+                    password_hash=None,
+                )
+                for role, user_id in user_ids.items()
+            ]
+        )
+        db_session.add_all(
+            [
+                Organization(id=org_id, name=f"Test-{org_id}")
+                for org_id in organization_ids
+            ]
+        )
         await db_session.flush()
 
-        db_session.add_all([
-            Membership(
-                user_id=user_ids[role],
-                organization_id=organization_id,
-                role=role,
-            )
-            for role in ("owner", "manager", "viewer")
-        ])
+        db_session.add_all(
+            [
+                Membership(
+                    user_id=user_ids[role],
+                    organization_id=organization_id,
+                    role=role,
+                )
+                for role in ("owner", "manager", "viewer")
+            ]
+        )
         db_session.add(
             Membership(
                 user_id=user_ids["outsider"],
@@ -73,42 +79,46 @@ async def invoice_data(db_session):
             )
         )
 
-        db_session.add_all([
-            Customer(
-                id=customer_id,
-                organization_id=organization_id,
-                name="Первый клиент",
-                email=f"{customer_id}@example.com",
-            ),
-            Customer(
-                id=other_customer_id,
-                organization_id=other_organization_id,
-                name="Чужой клиент",
-                email=f"{other_customer_id}@example.com",
-            ),
-        ])
+        db_session.add_all(
+            [
+                Customer(
+                    id=customer_id,
+                    organization_id=organization_id,
+                    name="Первый клиент",
+                    email=f"{customer_id}@example.com",
+                ),
+                Customer(
+                    id=other_customer_id,
+                    organization_id=other_organization_id,
+                    name="Чужой клиент",
+                    email=f"{other_customer_id}@example.com",
+                ),
+            ]
+        )
         await db_session.flush()
 
-        db_session.add_all([
-            Invoice(
-                id=invoice_id,
-                organization_id=organization_id,
-                customer_id=customer_id,
-                description="Первый счёт",
-                amount_minor=10000,
-                currency="RUB",
-                status="draft",
-            ),
-            Invoice(
-                id=other_invoice_id,
-                organization_id=other_organization_id,
-                customer_id=other_customer_id,
-                description="Чужой счёт",
-                amount_minor=20000,
-                currency="RUB",
-                status="draft",
-            ),
-        ])
+        db_session.add_all(
+            [
+                Invoice(
+                    id=invoice_id,
+                    organization_id=organization_id,
+                    customer_id=customer_id,
+                    description="Первый счёт",
+                    amount_minor=10000,
+                    currency="RUB",
+                    status="draft",
+                ),
+                Invoice(
+                    id=other_invoice_id,
+                    organization_id=other_organization_id,
+                    customer_id=other_customer_id,
+                    description="Чужой счёт",
+                    amount_minor=20000,
+                    currency="RUB",
+                    status="draft",
+                ),
+            ]
+        )
         await db_session.commit()
 
         yield {
@@ -118,11 +128,7 @@ async def invoice_data(db_session):
             "invoice_id": invoice_id,
             "other_invoice_id": other_invoice_id,
             "headers": {
-                role: {
-                    "Authorization": (
-                        f"Bearer {create_access_token(user_id)}"
-                    )
-                }
+                role: {"Authorization": (f"Bearer {create_access_token(user_id)}")}
                 for role, user_id in user_ids.items()
             },
         }
@@ -131,24 +137,16 @@ async def invoice_data(db_session):
 
         # Порядок важен: внешние ключи счетов используют RESTRICT.
         await db_session.execute(
-            delete(Invoice).where(
-                Invoice.organization_id.in_(organization_ids)
-            )
+            delete(Invoice).where(Invoice.organization_id.in_(organization_ids))
         )
         await db_session.execute(
-            delete(Customer).where(
-                Customer.organization_id.in_(organization_ids)
-            )
+            delete(Customer).where(Customer.organization_id.in_(organization_ids))
         )
         await db_session.execute(
-            delete(Membership).where(
-                Membership.organization_id.in_(organization_ids)
-            )
+            delete(Membership).where(Membership.organization_id.in_(organization_ids))
         )
         await db_session.execute(
-            delete(Organization).where(
-                Organization.id.in_(organization_ids)
-            )
+            delete(Organization).where(Organization.id.in_(organization_ids))
         )
         await db_session.execute(
             delete(User).where(User.id.in_(list(user_ids.values())))
@@ -174,9 +172,7 @@ async def invoice_ids_in_db(db_session, organization_id):
     await db_session.rollback()
     try:
         result = await db_session.execute(
-            select(Invoice.id).where(
-                Invoice.organization_id == organization_id
-            )
+            select(Invoice.id).where(Invoice.organization_id == organization_id)
         )
         return set(result.scalars().all())
     finally:
@@ -235,9 +231,7 @@ async def test_create_invoice(client, db_session, invoice_data, role):
 async def test_create_invoice_forbidden(
     client, db_session, invoice_data, role, expected_status
 ):
-    before = await invoice_ids_in_db(
-        db_session, invoice_data["organization_id"]
-    )
+    before = await invoice_ids_in_db(db_session, invoice_data["organization_id"])
 
     response = await client.post(
         invoices_url(invoice_data),
@@ -246,9 +240,9 @@ async def test_create_invoice_forbidden(
     )
 
     assert response.status_code == expected_status, response.text
-    assert await invoice_ids_in_db(
-        db_session, invoice_data["organization_id"]
-    ) == before
+    assert (
+        await invoice_ids_in_db(db_session, invoice_data["organization_id"]) == before
+    )
 
 
 @pytest.mark.asyncio
@@ -258,13 +252,9 @@ async def test_create_invoice_rejects_wrong_customer(
 ):
     payload = invoice_payload(invoice_data)
     payload["customer_id"] = str(
-        uuid4()
-        if customer_kind == "missing"
-        else invoice_data["other_customer_id"]
+        uuid4() if customer_kind == "missing" else invoice_data["other_customer_id"]
     )
-    before = await invoice_ids_in_db(
-        db_session, invoice_data["organization_id"]
-    )
+    before = await invoice_ids_in_db(db_session, invoice_data["organization_id"])
 
     response = await client.post(
         invoices_url(invoice_data),
@@ -273,9 +263,9 @@ async def test_create_invoice_rejects_wrong_customer(
     )
 
     assert response.status_code == 404, response.text
-    assert await invoice_ids_in_db(
-        db_session, invoice_data["organization_id"]
-    ) == before
+    assert (
+        await invoice_ids_in_db(db_session, invoice_data["organization_id"]) == before
+    )
 
 
 @pytest.mark.asyncio
@@ -301,9 +291,7 @@ async def test_create_invoice_validation(
 ):
     payload = invoice_payload(invoice_data)
     payload[field] = value
-    before = await invoice_ids_in_db(
-        db_session, invoice_data["organization_id"]
-    )
+    before = await invoice_ids_in_db(db_session, invoice_data["organization_id"])
 
     response = await client.post(
         invoices_url(invoice_data),
@@ -312,16 +300,14 @@ async def test_create_invoice_validation(
     )
 
     assert response.status_code == 422, response.text
-    assert await invoice_ids_in_db(
-        db_session, invoice_data["organization_id"]
-    ) == before
+    assert (
+        await invoice_ids_in_db(db_session, invoice_data["organization_id"]) == before
+    )
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("role", ["owner", "manager", "viewer"])
-async def test_list_invoices_is_scoped_to_organization(
-    client, invoice_data, role
-):
+async def test_list_invoices_is_scoped_to_organization(client, invoice_data, role):
     response = await client.get(
         invoices_url(invoice_data),
         headers=invoice_data["headers"][role],
@@ -330,12 +316,9 @@ async def test_list_invoices_is_scoped_to_organization(
     assert response.status_code == 200, response.text
     data = response.json()
 
-    assert [item["id"] for item in data] == [
-        str(invoice_data["invoice_id"])
-    ]
+    assert [item["id"] for item in data] == [str(invoice_data["invoice_id"])]
     assert all(
-        item["organization_id"] == str(invoice_data["organization_id"])
-        for item in data
+        item["organization_id"] == str(invoice_data["organization_id"]) for item in data
     )
 
 
@@ -379,9 +362,7 @@ async def test_get_invoice(client, invoice_data, role):
 @pytest.mark.parametrize("invoice_kind", ["missing", "other_organization"])
 async def test_get_invoice_not_found(client, invoice_data, invoice_kind):
     invoice_id = (
-        uuid4()
-        if invoice_kind == "missing"
-        else invoice_data["other_invoice_id"]
+        uuid4() if invoice_kind == "missing" else invoice_data["other_invoice_id"]
     )
 
     response = await client.get(
@@ -409,19 +390,13 @@ async def test_outsider_cannot_read_invoices(client, invoice_data, detail):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("action", ["create", "list", "get"])
-async def test_invoices_require_authentication(
-    client, invoice_data, action
-):
+async def test_invoices_require_authentication(client, invoice_data, action):
     url = invoices_url(invoice_data)
 
     if action == "create":
-        response = await client.post(
-            url, json=invoice_payload(invoice_data)
-        )
+        response = await client.post(url, json=invoice_payload(invoice_data))
     elif action == "get":
-        response = await client.get(
-            f"{url}/{invoice_data['invoice_id']}"
-        )
+        response = await client.get(f"{url}/{invoice_data['invoice_id']}")
     else:
         response = await client.get(url)
 
@@ -454,33 +429,25 @@ async def test_cannot_delete_customer_with_invoice(
         headers=invoice_data["headers"][role],
     )
     assert customer_response.status_code == 200, customer_response.text
-    assert customer_response.json()["id"] == str(
-        invoice_data["customer_id"]
-    )
+    assert customer_response.json()["id"] == str(invoice_data["customer_id"])
 
     invoice_response = await client.get(
         f"{invoices_url(invoice_data)}/{invoice_data['invoice_id']}",
         headers=invoice_data["headers"][role],
     )
     assert invoice_response.status_code == 200, invoice_response.text
-    assert invoice_response.json()["customer_id"] == str(
-        invoice_data["customer_id"]
-    )
+    assert invoice_response.json()["customer_id"] == str(invoice_data["customer_id"])
 
     # Проверяем сохранность записей непосредственно в БД.
     await db_session.rollback()
     try:
         customer_result = await db_session.execute(
-            select(Customer.id).where(
-                Customer.id == invoice_data["customer_id"]
-            )
+            select(Customer.id).where(Customer.id == invoice_data["customer_id"])
         )
         assert customer_result.scalar_one_or_none() is not None
 
         invoice_result = await db_session.execute(
-            select(Invoice.id).where(
-                Invoice.id == invoice_data["invoice_id"]
-            )
+            select(Invoice.id).where(Invoice.id == invoice_data["invoice_id"])
         )
         assert invoice_result.scalar_one_or_none() is not None
     finally:
@@ -489,9 +456,7 @@ async def test_cannot_delete_customer_with_invoice(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("role", ["owner", "manager"])
-async def test_delete_customer_without_invoices(
-    client, db_session, invoice_data, role
-):
+async def test_delete_customer_without_invoices(client, db_session, invoice_data, role):
     customer_id = uuid4()
     db_session.add(
         Customer(
@@ -504,8 +469,7 @@ async def test_delete_customer_without_invoices(
     await db_session.commit()
 
     response = await client.delete(
-        f"/organization/{invoice_data['organization_id']}"
-        f"/customers/{customer_id}",
+        f"/organization/{invoice_data['organization_id']}/customers/{customer_id}",
         headers=invoice_data["headers"][role],
     )
 
@@ -520,6 +484,7 @@ async def test_delete_customer_without_invoices(
         assert result.scalar_one_or_none() is None
     finally:
         await db_session.rollback()
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("role", ["owner", "manager"])
@@ -543,9 +508,7 @@ async def test_invoice_status_transition_success(
     invoice_id = invoice_data["invoice_id"]
 
     await db_session.execute(
-        update(Invoice)
-        .where(Invoice.id == invoice_id)
-        .values(status=initial_status)
+        update(Invoice).where(Invoice.id == invoice_id).values(status=initial_status)
     )
     await db_session.commit()
 
@@ -594,9 +557,7 @@ async def test_invoice_status_transition_rejects_invalid_state(
     invoice_id = invoice_data["invoice_id"]
 
     await db_session.execute(
-        update(Invoice)
-        .where(Invoice.id == invoice_id)
-        .values(status=initial_status)
+        update(Invoice).where(Invoice.id == invoice_id).values(status=initial_status)
     )
     await db_session.commit()
 
@@ -658,9 +619,7 @@ async def test_invoice_status_transition_requires_authentication(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("action", ["issue", "cancel"])
-async def test_invoice_status_transition_missing_invoice(
-    client, invoice_data, action
-):
+async def test_invoice_status_transition_missing_invoice(client, invoice_data, action):
     response = await client.post(
         f"{invoices_url(invoice_data)}/{uuid4()}/{action}",
         headers=invoice_data["headers"]["owner"],
@@ -701,9 +660,7 @@ async def test_invoice_status_transition_other_organization(
     )
 
     assert response.status_code == 404, response.text
-    assert await read_invoice_state(
-        db_session, other_invoice_id
-    ) == before
+    assert await read_invoice_state(db_session, other_invoice_id) == before
 
 
 @pytest.mark.asyncio

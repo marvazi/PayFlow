@@ -1,12 +1,13 @@
-from app.models import User, Organization,Membership
-from uuid import uuid4, UUID
+from uuid import UUID, uuid4
+
 import pytest
 from sqlalchemy import delete, select
-from app.models import User, Organization
+
+from app.models import Membership, Organization, User
 
 
 @pytest.mark.asyncio
-async def test_create_organization_with_owner(client,db_session):
+async def test_create_organization_with_owner(client, db_session):
     email = f"{uuid4()}@example.com"
     name = "asdd"
     password = "1234567890"
@@ -18,18 +19,17 @@ async def test_create_organization_with_owner(client,db_session):
                 "name": name,
                 "email": email,
                 "password": password,
-            }
+            },
         )
         assert response.status_code == 201
-        user_id = response.json()['id']
+        user_id = response.json()["id"]
 
-
-        required = await  client.post(
+        required = await client.post(
             "/auth/login",
             json={
                 "email": email,
-                "password":password,
-            }
+                "password": password,
+            },
         )
         login_data = required.json()
         assert required.status_code == 200
@@ -45,30 +45,26 @@ async def test_create_organization_with_owner(client,db_session):
         assert res["name"] == organization_name
         res = organizations.json()
         assert organizations.status_code == 201
-        assert res['name'] == organization_name
+        assert res["name"] == organization_name
         membership_result = await db_session.execute(
-            select(Membership).where(
-                Membership.organization_id == UUID(res["id"])
-            )
+            select(Membership).where(Membership.organization_id == UUID(res["id"]))
         )
         membership = membership_result.scalar_one_or_none()
         assert membership
         assert str(membership.user_id) == user_id
         assert membership.role == "owner"
 
-
     finally:
         await db_session.rollback()
         await db_session.execute(
             delete(Organization).where(Organization.name == organization_name)
         )
-        await db_session.execute(
-            delete(User).where(User.email == email)
-        )
+        await db_session.execute(delete(User).where(User.email == email))
         await db_session.commit()
 
+
 @pytest.mark.asyncio
-async def test_create_organization_without_auth(client,db_session):
+async def test_create_organization_without_auth(client, db_session):
     name = f"Test-{uuid4()}"
     response = await client.post(
         "/organization",
@@ -102,9 +98,7 @@ async def test_users_see_only_their_organizations(client, db_session):
                     "password": password,
                 },
             )
-            assert registration_response.status_code == 201, (
-                registration_response.text
-            )
+            assert registration_response.status_code == 201, registration_response.text
 
             login_response = await client.post(
                 "/auth/login",
@@ -120,9 +114,7 @@ async def test_users_see_only_their_organizations(client, db_session):
                 json={"name": organization_name},
                 headers={"Authorization": f"Bearer {token}"},
             )
-            assert organization_response.status_code == 201, (
-                organization_response.text
-            )
+            assert organization_response.status_code == 201, organization_response.text
             organization_ids.append(organization_response.json()["id"])
 
         for token, expected_id in zip(tokens, organization_ids):
@@ -141,13 +133,9 @@ async def test_users_see_only_their_organizations(client, db_session):
     finally:
         await db_session.rollback()
         await db_session.execute(
-            delete(Organization).where(
-                Organization.name.in_(organization_names)
-            )
+            delete(Organization).where(Organization.name.in_(organization_names))
         )
-        await db_session.execute(
-            delete(User).where(User.email.in_(emails))
-        )
+        await db_session.execute(delete(User).where(User.email.in_(emails)))
         await db_session.commit()
 
 
@@ -210,17 +198,8 @@ async def test_user_cannot_read_another_users_organization(client, db_session):
         await db_session.execute(
             delete(Organization).where(Organization.name.in_(names))
         )
-        await db_session.execute(
-            delete(User).where(User.email.in_(emails))
-        )
+        await db_session.execute(delete(User).where(User.email.in_(emails)))
         await db_session.commit()
-
-from uuid import UUID, uuid4
-
-import pytest
-from sqlalchemy import delete, select
-
-from app.models import Membership, Organization, User
 
 
 @pytest.mark.asyncio
@@ -299,13 +278,7 @@ async def test_manager_cannot_add_member_via_api(client, db_session):
     finally:
         await db_session.rollback()
         await db_session.execute(
-            delete(Organization).where(
-                Organization.name == organization_name
-            )
+            delete(Organization).where(Organization.name == organization_name)
         )
-        await db_session.execute(
-            delete(User).where(User.email.in_(emails))
-        )
+        await db_session.execute(delete(User).where(User.email.in_(emails)))
         await db_session.commit()
-
-    

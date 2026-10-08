@@ -15,7 +15,6 @@ from psp.db.session import get_session
 from psp.main import app
 from psp.models import Transaction
 
-
 TEST_DATABASE_URL = (
     "postgresql+asyncpg://"
     "payflow_psp_test:payflow_psp_test_password"

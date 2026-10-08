@@ -1,13 +1,15 @@
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
-from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field, EmailStr, field_validator
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class UserCreate(BaseModel):
-    name:str = Field(max_length=255, min_length=1)
+    name: str = Field(max_length=255, min_length=1)
     email: EmailStr
-    password:str = Field(max_length=128, min_length=8)
+    password: str = Field(max_length=128, min_length=8)
+
     @field_validator("name", mode="before")
     @classmethod
     def strip_name(cls, value: object) -> object:
@@ -22,13 +24,15 @@ class UserCreate(BaseModel):
             return value.strip().lower()
         return value
 
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id:UUID
-    email:EmailStr
-    name:str
-    created_at:datetime
+    id: UUID
+    email: EmailStr
+    name: str
+    created_at: datetime
+
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -40,6 +44,7 @@ class UserLogin(BaseModel):
         if isinstance(value, str):
             return value.strip().lower()
         return value
+
 
 class TokenResponse(BaseModel):
     access_token: str

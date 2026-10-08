@@ -2,20 +2,21 @@ from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.exeptions import CustomerNotFoundError, OrganizationNotFoundError, PermissionDeniedError, \
-    CustomerAlreadyExistsError, InvoiceNotFoundError, InvoiceNotEditableError, InvalidInvoiceStatusError, \
-    PaymentNotFoundError, PaymentAlreadyPendingError, InvalidPaymentStatusError
-from app.models import Customer, Invoice, Payment
-from app.repositories.customer import CustomerRepository
+
+from app.core.exeptions import (
+    InvalidInvoiceStatusError,
+    InvalidPaymentStatusError,
+    InvoiceNotFoundError,
+    OrganizationNotFoundError,
+    PaymentAlreadyPendingError,
+    PaymentNotFoundError,
+    PermissionDeniedError,
+)
+from app.models import Payment
 from app.repositories.invoice import InvoiceRepository
 from app.repositories.membership import MembershipRepository
 from app.repositories.payment import PaymentRepository
-from app.schemas.customer import CustomerCreate, CustomerUpdate
-from app.schemas.invoice import InvoiceCreate, InvoiceUpdate
 from app.schemas.payment import PaymentCreate
-
-
-
 
 
 class PaymentService:
@@ -25,17 +26,22 @@ class PaymentService:
         self.invoice_repository = InvoiceRepository(session)
         self.payment_repository = PaymentRepository(session)
 
-    async def create(self,actor_id:UUID,organization_id:UUID, data: PaymentCreate) -> Payment:
+    async def create(
+        self, actor_id: UUID, organization_id: UUID, data: PaymentCreate
+    ) -> Payment:
         try:
             async with self.session.begin():
-                membership = await self.membership_repository.get_by_user_and_organization(actor_id, organization_id)
+                membership = (
+                    await self.membership_repository.get_by_user_and_organization(
+                        actor_id, organization_id
+                    )
+                )
                 if membership is None:
                     raise OrganizationNotFoundError("Организация не найдена")
-                if membership.role not in ('manager', 'owner'):
+                if membership.role not in ("manager", "owner"):
                     raise PermissionDeniedError("Недостаточно прав")
                 invoice = await self.invoice_repository.get_for_update(
-                    invoice_id=data.invoice_id,
-                    organization_id=organization_id
+                    invoice_id=data.invoice_id, organization_id=organization_id
                 )
                 if invoice is None:
                     raise InvoiceNotFoundError("Нет такого счета")
@@ -44,11 +50,12 @@ class PaymentService:
                         "Оплатить можно только выставленный счёт"
                     )
                 pending_payment = await self.payment_repository.get_pending_by_invoice(
-                    invoice_id=invoice.id,
-                    organization_id=organization_id
+                    invoice_id=invoice.id, organization_id=organization_id
                 )
                 if pending_payment is not None:
-                    raise PaymentAlreadyPendingError("Для этого счёта уже есть незавершённый платёж")
+                    raise PaymentAlreadyPendingError(
+                        "Для этого счёта уже есть незавершённый платёж"
+                    )
 
                 created_payment = await self.payment_repository.create(
                     invoice_id=data.invoice_id,
@@ -57,12 +64,12 @@ class PaymentService:
                     organization_id=organization_id,
                 )
         except IntegrityError as exc:
-            cause = exc.orig.__cause__
+            cause = exc.orig.__cause__  # type: ignore[union-attr]
 
             if (
-                    getattr(cause, "sqlstate", None) == "23505"
-                    and getattr(cause, "constraint_name", None)
-                    == "payments_one_pending_per_invoice_idx"
+                getattr(cause, "sqlstate", None) == "23505"
+                and getattr(cause, "constraint_name", None)
+                == "payments_one_pending_per_invoice_idx"
             ):
                 raise PaymentAlreadyPendingError(
                     "Для этого счёта уже есть незавершённый платёж"
@@ -71,46 +78,47 @@ class PaymentService:
             raise
         return created_payment
 
-    async def get_payment(self,actor_id:UUID,organization_id:UUID,payment_id:UUID) -> Payment:
-        membership = await self.membership_repository.get_by_user_and_organization(actor_id, organization_id)
+    async def get_payment(
+        self, actor_id: UUID, organization_id: UUID, payment_id: UUID
+    ) -> Payment:
+        membership = await self.membership_repository.get_by_user_and_organization(
+            actor_id, organization_id
+        )
         if membership is None:
             raise OrganizationNotFoundError("Организация не найдена")
         payment = await self.payment_repository.get(
-            payment_id=payment_id,
-            organization_id=organization_id
+            payment_id=payment_id, organization_id=organization_id
         )
         if payment is None:
             raise PaymentNotFoundError("Не удалось найти платеж")
         return payment
 
-
-    async def list_payments(self,actor_id:UUID,invoice_id:UUID,organization_id:UUID) -> list[Payment]:
+    async def list_payments(
+        self, actor_id: UUID, invoice_id: UUID, organization_id: UUID
+    ) -> list[Payment]:
         membership = await self.membership_repository.get_by_user_and_organization(
-            user_id=actor_id,
-            organization_id=organization_id
+            user_id=actor_id, organization_id=organization_id
         )
         if membership is None:
             raise OrganizationNotFoundError("Организация не найдена")
         invoice = await self.invoice_repository.get(
-            invoice_id=invoice_id,
-            organization_id=organization_id
+            invoice_id=invoice_id, organization_id=organization_id
         )
         if invoice is None:
             raise InvoiceNotFoundError("Нет такого счета")
 
         payments_list = await self.payment_repository.list_by_invoice(
-            invoice_id=invoice_id,
-            organization_id=organization_id
+            invoice_id=invoice_id, organization_id=organization_id
         )
         return payments_list
 
     async def process_result(
-            self,
-            organization_id:UUID,
-            payment_id:UUID,
-            status:str,
-    )->Payment:
-        if status not in ('succeeded', 'failed'):
+        self,
+        organization_id: UUID,
+        payment_id: UUID,
+        status: str,
+    ) -> Payment:
+        if status not in ("succeeded", "failed"):
             raise InvalidPaymentStatusError(
                 "Допустимые результаты оплаты: succeeded, failed"
             )

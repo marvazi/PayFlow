@@ -2,7 +2,11 @@ from uuid import UUID
 
 import httpx
 
-from app.core.exeptions import PSPInvalidResponseError, PSPUnavailableError, PSPIdempotencyConflictError
+from app.core.exeptions import (
+    PSPIdempotencyConflictError,
+    PSPInvalidResponseError,
+    PSPUnavailableError,
+)
 from app.integrations.psp.schemas import PSPTransactionResponse
 
 
@@ -11,9 +15,7 @@ class PSPClient:
         self.client = client
 
     async def create_transaction(
-            self, external_payment_id: UUID,
-            amount_minor: int,
-            currency: str
+        self, external_payment_id: UUID, amount_minor: int, currency: str
     ) -> PSPTransactionResponse:
         try:
             response = await self.client.post(
@@ -21,8 +23,9 @@ class PSPClient:
                 json={
                     "external_payment_id": str(external_payment_id),
                     "amount_minor": amount_minor,
-                    "currency": currency
-                })
+                    "currency": currency,
+                },
+            )
             response.raise_for_status()
             return PSPTransactionResponse.model_validate(response.json())
         except httpx.TimeoutException as exc:

@@ -3,13 +3,14 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from psp.core.exceptions import IdempotencyConflictError, InvalidTransactionStatusError
-from psp.core.exceptions import TransactionNotFoundError
+from psp.core.exceptions import (
+    IdempotencyConflictError,
+    InvalidTransactionStatusError,
+    TransactionNotFoundError,
+)
 from psp.models import Transaction
 from psp.repositories.transaction import TransactionRepository
 from psp.schemas.transaction import TransactionCreate
-
-
 
 
 class TransactionService:
@@ -73,15 +74,15 @@ class TransactionService:
                 self._check_parameters(transaction, data)
                 return transaction
 
-    async def get(self, transaction_id: UUID)->Transaction:
+    async def get(self, transaction_id: UUID) -> Transaction:
         transaction = await self.transaction_repository.get(
             transaction_id=transaction_id
         )
         if transaction is None:
-            raise  TransactionNotFoundError("Операция не найдена")
+            raise TransactionNotFoundError("Операция не найдена")
         return transaction
 
-    async def get_by_external_payment_id(self,external_payment_id:UUID):
+    async def get_by_external_payment_id(self, external_payment_id: UUID):
         transaction = await self.transaction_repository.get_by_external_payment_id(
             external_payment_id=external_payment_id
         )
@@ -89,8 +90,8 @@ class TransactionService:
             raise TransactionNotFoundError("Операция не найдена")
         return transaction
 
-    async def complete(self, transaction_id: UUID,status:str)->Transaction:
-        if status not in ("succeeded","failed"):
+    async def complete(self, transaction_id: UUID, status: str) -> Transaction:
+        if status not in ("succeeded", "failed"):
             raise InvalidTransactionStatusError
         async with self.session.begin():
             transaction = await self.transaction_repository.get_for_update(

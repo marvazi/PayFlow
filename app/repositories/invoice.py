@@ -1,27 +1,42 @@
+from typing import TypedDict
 from uuid import UUID
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.invoice import Invoice
 
 
+class InvoiceChanges(TypedDict, total=False):
+    description: str
+    amount_minor: int
+
+
 class InvoiceRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create(self,customer_id:UUID, organization_id:UUID, description:str, amount_minor:int, currency:str) -> Invoice:
+    async def create(
+        self,
+        customer_id: UUID,
+        organization_id: UUID,
+        description: str,
+        amount_minor: int,
+        currency: str,
+    ) -> Invoice:
         invoice = Invoice(
             customer_id=customer_id,
             organization_id=organization_id,
             description=description,
             amount_minor=amount_minor,
             currency=currency,
-            status="draft"
+            status="draft",
         )
         self.session.add(invoice)
         await self.session.flush()
         return invoice
-    async def update(self,invoice:Invoice,changes:dict[str, str | int]) -> Invoice:
+
+    async def update(self, invoice: Invoice, changes: InvoiceChanges) -> Invoice:
         if "description" in changes:
             invoice.description = changes["description"]
         if "amount_minor" in changes:
@@ -29,20 +44,23 @@ class InvoiceRepository:
         await self.session.flush()
         return invoice
 
-    async def get(self,invoice_id:UUID,organization_id:UUID) -> Invoice | None:
+    async def get(self, invoice_id: UUID, organization_id: UUID) -> Invoice | None:
         result = await self.session.execute(
-            select(Invoice).
-            where(Invoice.id == invoice_id).
-            where(Invoice.organization_id == organization_id)
-            )
+            select(Invoice)
+            .where(Invoice.id == invoice_id)
+            .where(Invoice.organization_id == organization_id)
+        )
         invoice = result.scalar_one_or_none()
         return invoice
-    async def get_for_update(self,invoice_id:UUID,organization_id:UUID) -> Invoice | None:
+
+    async def get_for_update(
+        self, invoice_id: UUID, organization_id: UUID
+    ) -> Invoice | None:
         result = await self.session.execute(
-            select(Invoice).
-            where(Invoice.id == invoice_id).
-            where(Invoice.organization_id == organization_id).
-            with_for_update()
+            select(Invoice)
+            .where(Invoice.id == invoice_id)
+            .where(Invoice.organization_id == organization_id)
+            .with_for_update()
         )
 
         invoice = result.scalar_one_or_none()
@@ -53,15 +71,14 @@ class InvoiceRepository:
         await self.session.flush()
         return invoice
 
-
-    async def list_by_organization(self,organization_id:UUID) -> list[Invoice]:
+    async def list_by_organization(self, organization_id: UUID) -> list[Invoice]:
         result = await self.session.execute(
-            select(Invoice).
-            where(Invoice.organization_id == organization_id).
-            order_by(Invoice.created_at, Invoice.id)
+            select(Invoice)
+            .where(Invoice.organization_id == organization_id)
+            .order_by(Invoice.created_at, Invoice.id)
         )
         return list(result.scalars().all())
 
-    async def delete(self,invoice:Invoice):
+    async def delete(self, invoice: Invoice):
         await self.session.delete(invoice)
         await self.session.flush()

@@ -6,7 +6,6 @@ from sqlalchemy import select
 from psp.core.config import settings
 from psp.models import Transaction
 
-
 pytestmark = pytest.mark.asyncio
 
 
@@ -32,10 +31,7 @@ async def read_transactions(factory, external_payment_id):
                 Transaction.created_at,
                 Transaction.updated_at,
             )
-            .where(
-                Transaction.external_payment_id
-                == UUID(external_payment_id)
-            )
+            .where(Transaction.external_payment_id == UUID(external_payment_id))
             .order_by(Transaction.id)
         )
         return [dict(row) for row in result.mappings().all()]
@@ -47,9 +43,7 @@ async def test_create_transaction(
     transaction_payload,
     psp_session_factory,
 ):
-    body = await create_transaction(
-        psp_client, psp_headers, transaction_payload
-    )
+    body = await create_transaction(psp_client, psp_headers, transaction_payload)
 
     assert body["external_payment_id"] == transaction_payload["external_payment_id"]
     assert body["amount_minor"] == 150050
@@ -79,23 +73,22 @@ async def test_create_transaction_is_idempotent(
     transaction_payload,
     psp_session_factory,
 ):
-    first = await create_transaction(
-        psp_client, psp_headers, transaction_payload
-    )
+    first = await create_transaction(psp_client, psp_headers, transaction_payload)
     before = await read_transactions(
         psp_session_factory,
         transaction_payload["external_payment_id"],
     )
 
-    second = await create_transaction(
-        psp_client, psp_headers, transaction_payload
-    )
+    second = await create_transaction(psp_client, psp_headers, transaction_payload)
 
     assert second == first
-    assert await read_transactions(
-        psp_session_factory,
-        transaction_payload["external_payment_id"],
-    ) == before
+    assert (
+        await read_transactions(
+            psp_session_factory,
+            transaction_payload["external_payment_id"],
+        )
+        == before
+    )
 
 
 async def test_create_transaction_conflicting_amount(
@@ -104,9 +97,7 @@ async def test_create_transaction_conflicting_amount(
     transaction_payload,
     psp_session_factory,
 ):
-    await create_transaction(
-        psp_client, psp_headers, transaction_payload
-    )
+    await create_transaction(psp_client, psp_headers, transaction_payload)
     before = await read_transactions(
         psp_session_factory,
         transaction_payload["external_payment_id"],
@@ -119,18 +110,17 @@ async def test_create_transaction_conflicting_amount(
     )
 
     assert response.status_code == 409, response.text
-    assert await read_transactions(
-        psp_session_factory,
-        transaction_payload["external_payment_id"],
-    ) == before
-
-
-async def test_get_transaction(
-    psp_client, psp_headers, transaction_payload
-):
-    created = await create_transaction(
-        psp_client, psp_headers, transaction_payload
+    assert (
+        await read_transactions(
+            psp_session_factory,
+            transaction_payload["external_payment_id"],
+        )
+        == before
     )
+
+
+async def test_get_transaction(psp_client, psp_headers, transaction_payload):
+    created = await create_transaction(psp_client, psp_headers, transaction_payload)
 
     response = await psp_client.get(
         f"/transactions/{created['id']}",
@@ -142,9 +132,7 @@ async def test_get_transaction(
 
 
 @pytest.mark.parametrize("operation", ["get", "complete"])
-async def test_missing_transaction(
-    psp_client, psp_headers, operation
-):
+async def test_missing_transaction(psp_client, psp_headers, operation):
     url = f"/transactions/{uuid4()}"
 
     if operation == "get":
@@ -167,9 +155,7 @@ async def test_complete_transaction(
     psp_session_factory,
     status,
 ):
-    created = await create_transaction(
-        psp_client, psp_headers, transaction_payload
-    )
+    created = await create_transaction(psp_client, psp_headers, transaction_payload)
     before = await read_transactions(
         psp_session_factory,
         transaction_payload["external_payment_id"],
@@ -209,9 +195,7 @@ async def test_complete_transaction_is_idempotent(
     psp_session_factory,
     status,
 ):
-    created = await create_transaction(
-        psp_client, psp_headers, transaction_payload
-    )
+    created = await create_transaction(psp_client, psp_headers, transaction_payload)
     url = f"/transactions/{created['id']}/complete"
 
     first = await psp_client.post(
@@ -234,10 +218,13 @@ async def test_complete_transaction_is_idempotent(
 
     assert second.status_code == 200, second.text
     assert second.json() == first.json()
-    assert await read_transactions(
-        psp_session_factory,
-        transaction_payload["external_payment_id"],
-    ) == before
+    assert (
+        await read_transactions(
+            psp_session_factory,
+            transaction_payload["external_payment_id"],
+        )
+        == before
+    )
 
 
 @pytest.mark.parametrize(
@@ -255,9 +242,7 @@ async def test_complete_transaction_rejects_conflicting_result(
     first_status,
     second_status,
 ):
-    created = await create_transaction(
-        psp_client, psp_headers, transaction_payload
-    )
+    created = await create_transaction(psp_client, psp_headers, transaction_payload)
     url = f"/transactions/{created['id']}/complete"
 
     first = await psp_client.post(
@@ -279,10 +264,13 @@ async def test_complete_transaction_rejects_conflicting_result(
     )
 
     assert response.status_code == 409, response.text
-    assert await read_transactions(
-        psp_session_factory,
-        transaction_payload["external_payment_id"],
-    ) == before
+    assert (
+        await read_transactions(
+            psp_session_factory,
+            transaction_payload["external_payment_id"],
+        )
+        == before
+    )
 
 
 @pytest.mark.parametrize("status", ["succeeded", "failed"])
@@ -293,9 +281,7 @@ async def test_create_repeat_preserves_completed_status(
     psp_session_factory,
     status,
 ):
-    created = await create_transaction(
-        psp_client, psp_headers, transaction_payload
-    )
+    created = await create_transaction(psp_client, psp_headers, transaction_payload)
 
     completed = await psp_client.post(
         f"/transactions/{created['id']}/complete",
@@ -309,15 +295,16 @@ async def test_create_repeat_preserves_completed_status(
         transaction_payload["external_payment_id"],
     )
 
-    repeated = await create_transaction(
-        psp_client, psp_headers, transaction_payload
-    )
+    repeated = await create_transaction(psp_client, psp_headers, transaction_payload)
 
     assert repeated == completed.json()
-    assert await read_transactions(
-        psp_session_factory,
-        transaction_payload["external_payment_id"],
-    ) == before
+    assert (
+        await read_transactions(
+            psp_session_factory,
+            transaction_payload["external_payment_id"],
+        )
+        == before
+    )
 
 
 @pytest.mark.parametrize("operation", ["create", "get", "complete"])
@@ -330,18 +317,14 @@ async def test_api_key_is_required(
     operation,
     key_kind,
 ):
-    created = await create_transaction(
-        psp_client, psp_headers, transaction_payload
-    )
+    created = await create_transaction(psp_client, psp_headers, transaction_payload)
     before = await read_transactions(
         psp_session_factory,
         transaction_payload["external_payment_id"],
     )
 
     headers = (
-        {}
-        if key_kind == "missing"
-        else {"X-API-Key": settings.api_key + "-wrong"}
+        {} if key_kind == "missing" else {"X-API-Key": settings.api_key + "-wrong"}
     )
 
     if operation == "create":
@@ -363,10 +346,13 @@ async def test_api_key_is_required(
         )
 
     assert response.status_code == 401, response.text
-    assert await read_transactions(
-        psp_session_factory,
-        transaction_payload["external_payment_id"],
-    ) == before
+    assert (
+        await read_transactions(
+            psp_session_factory,
+            transaction_payload["external_payment_id"],
+        )
+        == before
+    )
 
 
 @pytest.mark.parametrize(
@@ -401,10 +387,13 @@ async def test_create_transaction_invalid_payload(
     )
 
     assert response.status_code == 422, response.text
-    assert await read_transactions(
-        psp_session_factory,
-        transaction_payload["external_payment_id"],
-    ) == []
+    assert (
+        await read_transactions(
+            psp_session_factory,
+            transaction_payload["external_payment_id"],
+        )
+        == []
+    )
 
 
 @pytest.mark.parametrize(
@@ -460,9 +449,7 @@ async def test_complete_transaction_invalid_payload(
     psp_session_factory,
     payload,
 ):
-    created = await create_transaction(
-        psp_client, psp_headers, transaction_payload
-    )
+    created = await create_transaction(psp_client, psp_headers, transaction_payload)
     before = await read_transactions(
         psp_session_factory,
         transaction_payload["external_payment_id"],
@@ -475,7 +462,10 @@ async def test_complete_transaction_invalid_payload(
     )
 
     assert response.status_code == 422, response.text
-    assert await read_transactions(
-        psp_session_factory,
-        transaction_payload["external_payment_id"],
-    ) == before
+    assert (
+        await read_transactions(
+            psp_session_factory,
+            transaction_payload["external_payment_id"],
+        )
+        == before
+    )

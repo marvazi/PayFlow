@@ -27,16 +27,18 @@ async def payment_case(db_session):
     organization_ids = [organization_id, other_organization_id]
 
     try:
-        db_session.add_all([
-            Organization(
-                id=organization_id,
-                name=f"Test-{uuid4()}",
-            ),
-            Organization(
-                id=other_organization_id,
-                name=f"Test-{uuid4()}",
-            ),
-        ])
+        db_session.add_all(
+            [
+                Organization(
+                    id=organization_id,
+                    name=f"Test-{uuid4()}",
+                ),
+                Organization(
+                    id=other_organization_id,
+                    name=f"Test-{uuid4()}",
+                ),
+            ]
+        )
         await db_session.flush()
 
         db_session.add(
@@ -86,15 +88,11 @@ async def payment_case(db_session):
 
         for model in (Payment, Invoice, Customer):
             await db_session.execute(
-                delete(model).where(
-                    model.organization_id.in_(organization_ids)
-                )
+                delete(model).where(model.organization_id.in_(organization_ids))
             )
 
         await db_session.execute(
-            delete(Organization).where(
-                Organization.id.in_(organization_ids)
-            )
+            delete(Organization).where(Organization.id.in_(organization_ids))
         )
         await db_session.commit()
 
@@ -167,10 +165,7 @@ async def test_process_result_success(
 
     assert after["payment"]["status"] == result_status
     assert after["invoice"]["status"] == invoice_status
-    assert (
-        after["payment"]["updated_at"]
-        >= before["payment"]["updated_at"]
-    )
+    assert after["payment"]["updated_at"] >= before["payment"]["updated_at"]
 
     # Другие поля не должны меняться.
     expected_payment = {
@@ -189,9 +184,7 @@ async def test_process_result_success(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("result_status", ["succeeded", "failed"])
-async def test_process_result_is_idempotent(
-    db_session, payment_case, result_status
-):
+async def test_process_result_is_idempotent(db_session, payment_case, result_status):
     service = PaymentService(db_session)
 
     await service.process_result(

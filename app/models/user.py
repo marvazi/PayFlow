@@ -1,11 +1,14 @@
 from datetime import datetime
-from sqlalchemy import DateTime, String, func, Index
+from uuid import UUID, uuid4
+
+from sqlalchemy import DateTime, Index, String, func
+from sqlalchemy.orm import Mapped, mapped_column
+
 from app.db.base import Base
-from uuid import uuid4, UUID
-from sqlalchemy.orm import mapped_column, Mapped
+
 
 class User(Base):
-    __tablename__ = 'users'
+    __tablename__ = "users"
 
     id: Mapped[UUID] = mapped_column(default=uuid4, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)

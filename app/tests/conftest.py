@@ -1,15 +1,17 @@
 from collections.abc import AsyncIterator
-from httpx import ASGITransport, AsyncClient
 
-from app.api.dependencies import get_auth_session
-from app.main import app
-from app.db.session import get_session
 import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
+
+from app.api.dependencies import get_auth_session
+from app.db.session import get_session
+from app.main import app
+
 TEST_DATABASE_URL = (
     "postgresql+asyncpg://"
     "payflow_test:payflow_test_password@127.0.0.1:5434/payflow_test"
@@ -26,6 +28,8 @@ async def db_session() -> AsyncIterator[AsyncSession]:
             yield session
     finally:
         await engine.dispose()
+
+
 @pytest_asyncio.fixture
 async def concurrent_session_factory():
     engine = create_async_engine(TEST_DATABASE_URL)
@@ -37,6 +41,8 @@ async def concurrent_session_factory():
         yield factory
     finally:
         await engine.dispose()
+
+
 @pytest_asyncio.fixture()
 async def auth_db_session() -> AsyncIterator[AsyncSession]:
     engine = create_async_engine(TEST_DATABASE_URL)
@@ -46,6 +52,7 @@ async def auth_db_session() -> AsyncIterator[AsyncSession]:
             yield session
     finally:
         await engine.dispose()
+
 
 @pytest_asyncio.fixture
 async def client(db_session, auth_db_session):
@@ -73,4 +80,3 @@ async def client(db_session, auth_db_session):
     finally:
         app.dependency_overrides.pop(get_session, None)
         app.dependency_overrides.pop(get_auth_session, None)
-

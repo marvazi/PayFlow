@@ -12,15 +12,11 @@ from psp.models import Transaction
 from psp.schemas.transaction import TransactionCreate
 from psp.services.transaction import TransactionService
 
-
 pytestmark = pytest.mark.asyncio
 
 
 async def run_concurrently(*operations):
-    tasks = [
-        asyncio.create_task(operation)
-        for operation in operations
-    ]
+    tasks = [asyncio.create_task(operation) for operation in operations]
 
     try:
         return await asyncio.wait_for(
@@ -156,14 +152,8 @@ async def test_concurrent_create_different_parameters(
         )
     )
 
-    successes = [
-        item for item in results
-        if isinstance(item, Transaction)
-    ]
-    conflicts = [
-        item for item in results
-        if isinstance(item, IdempotencyConflictError)
-    ]
+    successes = [item for item in results if isinstance(item, Transaction)]
+    conflicts = [item for item in results if isinstance(item, IdempotencyConflictError)]
 
     assert len(successes) == 1, results
     assert len(conflicts) == 1, results
@@ -254,13 +244,9 @@ async def test_concurrent_complete_conflicting_statuses(
         )
     )
 
-    successes = [
-        item for item in results
-        if isinstance(item, Transaction)
-    ]
+    successes = [item for item in results if isinstance(item, Transaction)]
     conflicts = [
-        item for item in results
-        if isinstance(item, InvalidTransactionStatusError)
+        item for item in results if isinstance(item, InvalidTransactionStatusError)
     ]
 
     assert len(successes) == 1, results

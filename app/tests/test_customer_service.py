@@ -1,8 +1,11 @@
 from uuid import uuid4
+
 import pytest
-from app.models import Organization, Customer, Membership
-from app.services.customer import CustomerService
+
+from app.models import Customer, Membership, Organization
 from app.models.user import User
+from app.services.customer import CustomerService
+
 
 @pytest.mark.asyncio
 async def test_find_customer_in_organization(db_session):
@@ -45,4 +48,3 @@ async def test_find_customer_in_organization(db_session):
 
     finally:
         await db_session.rollback()
-

@@ -23,36 +23,39 @@ async def payment_data(db_session):
     empty_invoice_id = uuid4()
     other_invoice_id = uuid4()
 
-    user_ids = {
-        role: uuid4()
-        for role in ("owner", "manager", "viewer", "outsider")
-    }
+    user_ids = {role: uuid4() for role in ("owner", "manager", "viewer", "outsider")}
 
     try:
-        db_session.add_all([
-            User(
-                id=user_id,
-                name=role,
-                email=f"{user_id}@example.com",
-                password_hash=None,
-            )
-            for role, user_id in user_ids.items()
-        ])
+        db_session.add_all(
+            [
+                User(
+                    id=user_id,
+                    name=role,
+                    email=f"{user_id}@example.com",
+                    password_hash=None,
+                )
+                for role, user_id in user_ids.items()
+            ]
+        )
 
-        db_session.add_all([
-            Organization(id=organization_id, name=f"Test-{uuid4()}"),
-            Organization(id=other_organization_id, name=f"Test-{uuid4()}"),
-        ])
+        db_session.add_all(
+            [
+                Organization(id=organization_id, name=f"Test-{uuid4()}"),
+                Organization(id=other_organization_id, name=f"Test-{uuid4()}"),
+            ]
+        )
         await db_session.flush()
 
-        db_session.add_all([
-            Membership(
-                user_id=user_ids[role],
-                organization_id=organization_id,
-                role=role,
-            )
-            for role in ("owner", "manager", "viewer")
-        ])
+        db_session.add_all(
+            [
+                Membership(
+                    user_id=user_ids[role],
+                    organization_id=organization_id,
+                    role=role,
+                )
+                for role in ("owner", "manager", "viewer")
+            ]
+        )
         db_session.add(
             Membership(
                 user_id=user_ids["outsider"],
@@ -61,51 +64,55 @@ async def payment_data(db_session):
             )
         )
 
-        db_session.add_all([
-            Customer(
-                id=customer_id,
-                organization_id=organization_id,
-                name="Первый клиент",
-                email=f"{uuid4()}@example.com",
-            ),
-            Customer(
-                id=other_customer_id,
-                organization_id=other_organization_id,
-                name="Другой клиент",
-                email=f"{uuid4()}@example.com",
-            ),
-        ])
+        db_session.add_all(
+            [
+                Customer(
+                    id=customer_id,
+                    organization_id=organization_id,
+                    name="Первый клиент",
+                    email=f"{uuid4()}@example.com",
+                ),
+                Customer(
+                    id=other_customer_id,
+                    organization_id=other_organization_id,
+                    name="Другой клиент",
+                    email=f"{uuid4()}@example.com",
+                ),
+            ]
+        )
         await db_session.flush()
 
-        db_session.add_all([
-            Invoice(
-                id=invoice_id,
-                organization_id=organization_id,
-                customer_id=customer_id,
-                description="Основной счёт",
-                amount_minor=150050,
-                currency="RUB",
-                status="issued",
-            ),
-            Invoice(
-                id=empty_invoice_id,
-                organization_id=organization_id,
-                customer_id=customer_id,
-                description="Счёт без платежей",
-                amount_minor=20000,
-                currency="RUB",
-                status="issued",
-            ),
-            Invoice(
-                id=other_invoice_id,
-                organization_id=other_organization_id,
-                customer_id=other_customer_id,
-                description="Счёт другой организации",
-                amount_minor=30000,
-                currency="RUB",
-                status="issued",
-            ),
-        ])
+        db_session.add_all(
+            [
+                Invoice(
+                    id=invoice_id,
+                    organization_id=organization_id,
+                    customer_id=customer_id,
+                    description="Основной счёт",
+                    amount_minor=150050,
+                    currency="RUB",
+                    status="issued",
+                ),
+                Invoice(
+                    id=empty_invoice_id,
+                    organization_id=organization_id,
+                    customer_id=customer_id,
+                    description="Счёт без платежей",
+                    amount_minor=20000,
+                    currency="RUB",
+                    status="issued",
+                ),
+                Invoice(
+                    id=other_invoice_id,
+                    organization_id=other_organization_id,
+                    customer_id=other_customer_id,
+                    description="Счёт другой организации",
+                    amount_minor=30000,
+                    currency="RUB",
+                    status="issued",
+                ),
+            ]
+        )
         await db_session.commit()
 
         yield {
@@ -115,9 +122,7 @@ async def payment_data(db_session):
             "empty_invoice_id": empty_invoice_id,
             "other_invoice_id": other_invoice_id,
             "headers": {
-                role: {
-                    "Authorization": f"Bearer {create_access_token(user_id)}"
-                }
+                role: {"Authorization": f"Bearer {create_access_token(user_id)}"}
                 for role, user_id in user_ids.items()
             },
         }
@@ -128,15 +133,11 @@ async def payment_data(db_session):
         # Сначала удаляем записи, которые ссылаются на другие таблицы.
         for model in (Payment, Invoice, Customer, Membership):
             await db_session.execute(
-                delete(model).where(
-                    model.organization_id.in_(organization_ids)
-                )
+                delete(model).where(model.organization_id.in_(organization_ids))
             )
 
         await db_session.execute(
-            delete(Organization).where(
-                Organization.id.in_(organization_ids)
-            )
+            delete(Organization).where(Organization.id.in_(organization_ids))
         )
         await db_session.execute(
             delete(User).where(User.id.in_(list(user_ids.values())))
@@ -203,9 +204,7 @@ async def test_create_payment_success(client, db_session, payment_data, role):
     assert body["created_at"]
     assert body["updated_at"]
 
-    rows = await read_payments(
-        db_session, payment_data["organization_id"]
-    )
+    rows = await read_payments(db_session, payment_data["organization_id"])
     assert len(rows) == 1
     assert rows[0]["id"] == UUID(body["id"])
     assert rows[0]["invoice_id"] == payment_data["invoice_id"]
@@ -219,9 +218,7 @@ async def test_create_payment_rejects_duplicate_pending(
     client, db_session, payment_data
 ):
     await create_payment(client, payment_data)
-    before = await read_payments(
-        db_session, payment_data["organization_id"]
-    )
+    before = await read_payments(db_session, payment_data["organization_id"])
 
     response = await client.post(
         payments_url(payment_data),
@@ -230,22 +227,16 @@ async def test_create_payment_rejects_duplicate_pending(
     )
 
     assert response.status_code == 409, response.text
-    assert await read_payments(
-        db_session, payment_data["organization_id"]
-    ) == before
+    assert await read_payments(db_session, payment_data["organization_id"]) == before
 
 
 @pytest.mark.asyncio
-async def test_create_payment_after_failed_attempt(
-    client, db_session, payment_data
-):
+async def test_create_payment_after_failed_attempt(client, db_session, payment_data):
     first = await create_payment(client, payment_data)
 
     # Имитируем завершённую неудачную попытку.
     await db_session.execute(
-        update(Payment)
-        .where(Payment.id == UUID(first["id"]))
-        .values(status="failed")
+        update(Payment).where(Payment.id == UUID(first["id"])).values(status="failed")
     )
     await db_session.commit()
 
@@ -254,9 +245,7 @@ async def test_create_payment_after_failed_attempt(
     assert second["id"] != first["id"]
     assert second["status"] == "pending"
 
-    rows = await read_payments(
-        db_session, payment_data["organization_id"]
-    )
+    rows = await read_payments(db_session, payment_data["organization_id"])
     assert len(rows) == 2
     assert {row["status"] for row in rows} == {"failed", "pending"}
 
@@ -280,9 +269,7 @@ async def test_create_payment_rejects_invoice_status(
     )
 
     assert response.status_code == 409, response.text
-    assert await read_payments(
-        db_session, payment_data["organization_id"]
-    ) == []
+    assert await read_payments(db_session, payment_data["organization_id"]) == []
 
 
 @pytest.mark.asyncio
@@ -300,9 +287,7 @@ async def test_create_payment_checks_permissions(
     )
 
     assert response.status_code == expected_status, response.text
-    assert await read_payments(
-        db_session, payment_data["organization_id"]
-    ) == []
+    assert await read_payments(db_session, payment_data["organization_id"]) == []
 
 
 @pytest.mark.asyncio
@@ -310,11 +295,7 @@ async def test_create_payment_checks_permissions(
 async def test_create_payment_rejects_unavailable_invoice(
     client, db_session, payment_data, target
 ):
-    invoice_id = (
-        uuid4()
-        if target == "missing"
-        else payment_data["other_invoice_id"]
-    )
+    invoice_id = uuid4() if target == "missing" else payment_data["other_invoice_id"]
 
     response = await client.post(
         payments_url(payment_data),
@@ -353,9 +334,7 @@ async def test_create_payment_rejects_extra_fields(
     )
 
     assert response.status_code == 422, response.text
-    assert await read_payments(
-        db_session, payment_data["organization_id"]
-    ) == []
+    assert await read_payments(db_session, payment_data["organization_id"]) == []
 
 
 @pytest.mark.asyncio
@@ -373,9 +352,7 @@ async def test_create_payment_validates_invoice_id(
     )
 
     assert response.status_code == 422, response.text
-    assert await read_payments(
-        db_session, payment_data["organization_id"]
-    ) == []
+    assert await read_payments(db_session, payment_data["organization_id"]) == []
 
 
 @pytest.mark.asyncio
@@ -415,16 +392,12 @@ async def test_get_payment_outsider(client, payment_data):
 
 
 @pytest.mark.asyncio
-async def test_get_payment_cannot_use_another_organization(
-    client, payment_data
-):
+async def test_get_payment_cannot_use_another_organization(client, payment_data):
     created = await create_payment(client, payment_data)
 
     # Пользователь имеет доступ к другой организации,
     # но пытается получить через неё чужой платёж.
-    other_url = payments_url(
-        payment_data, payment_data["other_organization_id"]
-    )
+    other_url = payments_url(payment_data, payment_data["other_organization_id"])
     response = await client.get(
         f"{other_url}/{created['id']}",
         headers=payment_data["headers"]["outsider"],
@@ -448,9 +421,7 @@ async def test_list_payments_success(client, payment_data, role):
 
     # И платёж другой организации.
     response = await client.post(
-        payments_url(
-            payment_data, payment_data["other_organization_id"]
-        ),
+        payments_url(payment_data, payment_data["other_organization_id"]),
         headers=payment_data["headers"]["outsider"],
         json={"invoice_id": str(payment_data["other_invoice_id"])},
     )
@@ -480,14 +451,8 @@ async def test_list_payments_empty(client, payment_data):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("target", ["missing", "other_organization"])
-async def test_list_payments_unavailable_invoice(
-    client, payment_data, target
-):
-    invoice_id = (
-        uuid4()
-        if target == "missing"
-        else payment_data["other_invoice_id"]
-    )
+async def test_list_payments_unavailable_invoice(client, payment_data, target):
+    invoice_id = uuid4() if target == "missing" else payment_data["other_invoice_id"]
 
     response = await client.get(
         payments_url(payment_data),
@@ -517,9 +482,7 @@ async def test_payments_require_authentication(
     client, db_session, payment_data, operation
 ):
     created = await create_payment(client, payment_data)
-    before = await read_payments(
-        db_session, payment_data["organization_id"]
-    )
+    before = await read_payments(db_session, payment_data["organization_id"])
     url = payments_url(payment_data)
 
     if operation == "create":
@@ -536,6 +499,4 @@ async def test_payments_require_authentication(
         )
 
     assert response.status_code == 401, response.text
-    assert await read_payments(
-        db_session, payment_data["organization_id"]
-    ) == before
+    assert await read_payments(db_session, payment_data["organization_id"]) == before

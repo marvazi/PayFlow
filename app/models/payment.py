@@ -1,12 +1,20 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
+from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, String, func, ForeignKey, BIGINT, CheckConstraint, Index, text
-from uuid import uuid4, UUID
-from sqlalchemy.orm import mapped_column, Mapped, relationship
+from sqlalchemy import (
+    BIGINT,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    func,
+    text,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.db.base import Base
-
-
 
 
 class Payment(Base):
@@ -20,8 +28,8 @@ class Payment(Base):
         ForeignKey("invoices.id", ondelete="RESTRICT")
     )
     amount_minor: Mapped[int] = mapped_column(BIGINT, nullable=False)
-    status: Mapped[str] = mapped_column(String(20),default="pending", nullable=False)
-    currency: Mapped[str] = mapped_column(String(3),default="RUB", nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="RUB", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -37,10 +45,7 @@ class Payment(Base):
     invoice: Mapped["Invoice"] = relationship(back_populates="payments")
 
     __table_args__ = (
-        CheckConstraint(
-            "amount_minor > 0",
-            name="ck_payments_amount_positive"
-        ),
+        CheckConstraint("amount_minor > 0", name="ck_payments_amount_positive"),
         CheckConstraint(
             "currency = 'RUB'",
             name="ck_payments_currency",
@@ -56,6 +61,7 @@ class Payment(Base):
             unique=True,
         ),
     )
+
 
 if TYPE_CHECKING:
     from app.models.invoice import Invoice

@@ -3,6 +3,7 @@ from uuid import uuid4
 import pytest
 import pytest_asyncio
 from sqlalchemy import delete, select
+
 from app.core.security import create_access_token
 from app.models import Membership, Organization, User
 
@@ -26,37 +27,43 @@ async def membership_data(db_session):
     }
 
     try:
-        db_session.add_all([
-            User(
-                id=user_id,
-                name=role,
-                email=f"{user_id}@example.com",
-                password_hash=None,
-            )
-            for role, user_id in user_ids.items()
-        ])
+        db_session.add_all(
+            [
+                User(
+                    id=user_id,
+                    name=role,
+                    email=f"{user_id}@example.com",
+                    password_hash=None,
+                )
+                for role, user_id in user_ids.items()
+            ]
+        )
 
-        db_session.add_all([
-            Organization(
-                id=organization_id,
-                name=f"Test-{organization_id}",
-            ),
-            Organization(
-                id=other_organization_id,
-                name=f"Test-{other_organization_id}",
-            ),
-        ])
+        db_session.add_all(
+            [
+                Organization(
+                    id=organization_id,
+                    name=f"Test-{organization_id}",
+                ),
+                Organization(
+                    id=other_organization_id,
+                    name=f"Test-{other_organization_id}",
+                ),
+            ]
+        )
 
         await db_session.flush()
 
-        db_session.add_all([
-            Membership(
-                user_id=user_ids[role],
-                organization_id=organization_id,
-                role=role,
-            )
-            for role in ("owner", "manager", "viewer")
-        ])
+        db_session.add_all(
+            [
+                Membership(
+                    user_id=user_ids[role],
+                    organization_id=organization_id,
+                    role=role,
+                )
+                for role in ("owner", "manager", "viewer")
+            ]
+        )
 
         # Посторонний пользователь владеет другой организацией.
         db_session.add(
@@ -83,17 +90,17 @@ async def membership_data(db_session):
         # Связанные Membership удаляются через ON DELETE CASCADE.
         await db_session.execute(
             delete(Organization).where(
-                Organization.id.in_([
-                    organization_id,
-                    other_organization_id,
-                ])
+                Organization.id.in_(
+                    [
+                        organization_id,
+                        other_organization_id,
+                    ]
+                )
             )
         )
 
         await db_session.execute(
-            delete(User).where(
-                User.id.in_(list(user_ids.values()))
-            )
+            delete(User).where(User.id.in_(list(user_ids.values())))
         )
 
         await db_session.commit()
@@ -121,16 +128,10 @@ async def test_member_can_list_organization_members(
 
     assert len(members) == 3
 
-    actual_members = {
-        member["user_id"]: member["role"]
-        for member in members
-    }
+    actual_members = {member["user_id"]: member["role"] for member in members}
     assert actual_members == membership_data["expected_members"]
 
-    assert all(
-        member["organization_id"] == str(organization_id)
-        for member in members
-    )
+    assert all(member["organization_id"] == str(organization_id) for member in members)
 
     # Участие из другой организации не должно попасть в ответ.
     outsider_id = str(membership_data["user_ids"]["outsider"])
@@ -183,6 +184,7 @@ async def test_list_members_requires_authentication(
     assert response.status_code == 401, response.text
     assert response.headers["WWW-Authenticate"] == "Bearer"
 
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("target_role", "new_role"),
@@ -193,7 +195,11 @@ async def test_list_members_requires_authentication(
     ],
 )
 async def test_owner_can_change_member_role(
-    client, db_session, membership_data, target_role, new_role,
+    client,
+    db_session,
+    membership_data,
+    target_role,
+    new_role,
 ):
     organization_id = membership_data["organization_id"]
     owner_id = membership_data["user_ids"]["owner"]
@@ -227,7 +233,10 @@ async def test_owner_can_change_member_role(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("actor_role", ["manager", "viewer", "outsider"])
 async def test_non_owner_cannot_change_member_role(
-    client, db_session, membership_data, actor_role,
+    client,
+    db_session,
+    membership_data,
+    actor_role,
 ):
     organization_id = membership_data["organization_id"]
     actor_id = membership_data["user_ids"][actor_role]
@@ -255,7 +264,9 @@ async def test_non_owner_cannot_change_member_role(
 
 @pytest.mark.asyncio
 async def test_owner_role_cannot_be_changed(
-    client, db_session, membership_data,
+    client,
+    db_session,
+    membership_data,
 ):
     organization_id = membership_data["organization_id"]
     owner_id = membership_data["user_ids"]["owner"]
@@ -281,7 +292,9 @@ async def test_owner_role_cannot_be_changed(
 
 @pytest.mark.asyncio
 async def test_cannot_change_member_from_another_organization(
-    client, db_session, membership_data,
+    client,
+    db_session,
+    membership_data,
 ):
     organization_id = membership_data["organization_id"]
     owner_id = membership_data["user_ids"]["owner"]
@@ -329,7 +342,10 @@ async def test_change_role_for_missing_member(client, membership_data):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("invalid_role", ["owner", "admin"])
 async def test_change_role_rejects_invalid_role(
-    client, db_session, membership_data, invalid_role,
+    client,
+    db_session,
+    membership_data,
+    invalid_role,
 ):
     organization_id = membership_data["organization_id"]
     owner_id = membership_data["user_ids"]["owner"]
@@ -356,7 +372,9 @@ async def test_change_role_rejects_invalid_role(
 
 @pytest.mark.asyncio
 async def test_change_role_requires_authentication(
-    client, db_session, membership_data,
+    client,
+    db_session,
+    membership_data,
 ):
     organization_id = membership_data["organization_id"]
     target_id = membership_data["user_ids"]["manager"]
@@ -378,9 +396,12 @@ async def test_change_role_requires_authentication(
     )
     assert saved_role == "manager"
 
+
 @pytest.mark.asyncio
 async def test_owner_can_remove_member(
-    client, db_session, membership_data,
+    client,
+    db_session,
+    membership_data,
 ):
     organization_id = membership_data["organization_id"]
     owner_id = membership_data["user_ids"]["owner"]
@@ -425,9 +446,7 @@ async def test_owner_can_remove_member(
     assert deleted_membership is None
 
     # Учётная запись пользователя сохранилась.
-    saved_user_id = await db_session.scalar(
-        select(User.id).where(User.id == target_id)
-    )
+    saved_user_id = await db_session.scalar(select(User.id).where(User.id == target_id))
     assert saved_user_id == target_id
 
     # Его участие в другой организации тоже сохранилось.
@@ -462,7 +481,10 @@ async def test_owner_can_remove_member(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("actor_role", ["manager", "viewer", "outsider"])
 async def test_non_owner_cannot_remove_member(
-    client, db_session, membership_data, actor_role,
+    client,
+    db_session,
+    membership_data,
+    actor_role,
 ):
     organization_id = membership_data["organization_id"]
     actor_id = membership_data["user_ids"][actor_role]
@@ -493,7 +515,9 @@ async def test_non_owner_cannot_remove_member(
 
 @pytest.mark.asyncio
 async def test_owner_cannot_remove_self(
-    client, db_session, membership_data,
+    client,
+    db_session,
+    membership_data,
 ):
     organization_id = membership_data["organization_id"]
     owner_id = membership_data["user_ids"]["owner"]
@@ -534,7 +558,9 @@ async def test_remove_missing_member(client, membership_data):
 
 @pytest.mark.asyncio
 async def test_cannot_remove_member_from_another_organization(
-    client, db_session, membership_data,
+    client,
+    db_session,
+    membership_data,
 ):
     organization_id = membership_data["organization_id"]
     owner_id = membership_data["user_ids"]["owner"]
@@ -575,7 +601,9 @@ async def test_cannot_remove_member_from_another_organization(
 
 @pytest.mark.asyncio
 async def test_remove_member_requires_authentication(
-    client, db_session, membership_data,
+    client,
+    db_session,
+    membership_data,
 ):
     organization_id = membership_data["organization_id"]
     target_id = membership_data["user_ids"]["manager"]

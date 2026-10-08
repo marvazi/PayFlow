@@ -1,6 +1,6 @@
 import secrets
-from datetime import datetime, timezone, timedelta
-from uuid import uuid4, UUID
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 import jwt
 import pytest
@@ -26,6 +26,7 @@ async def test_auth_api(client):
     )
     assert response.status_code == 422
 
+
 @pytest.mark.asyncio
 async def test_success_auth_api(client, db_session):
     email = f"{uuid4()}@example.com"
@@ -37,7 +38,7 @@ async def test_success_auth_api(client, db_session):
                 "name": "Максим",
                 "email": email,
                 "password": password,
-            }
+            },
         )
         data = response.json()
         assert response.status_code == 201
@@ -48,10 +49,9 @@ async def test_success_auth_api(client, db_session):
     finally:
         await db_session.rollback()
 
-        await db_session.execute(
-            delete(User).where(User.email == email)
-        )
+        await db_session.execute(delete(User).where(User.email == email))
         await db_session.commit()
+
 
 @pytest.mark.asyncio
 async def test_email_auth_api(client, db_session):
@@ -59,21 +59,13 @@ async def test_email_auth_api(client, db_session):
     try:
         response = await client.post(
             "/auth/register",
-            json={
-                'email': email,
-                'password': '12345567859',
-                'name': 'Max'
-            }
+            json={"email": email, "password": "12345567859", "name": "Max"},
         )
         assert response.status_code == 201
 
         one_more_response = await client.post(
             "/auth/register",
-            json={
-                'email': email,
-                'password': '12345567859',
-                'name': 'Max'
-            }
+            json={"email": email, "password": "12345567859", "name": "Max"},
         )
 
         assert one_more_response.status_code == 409
@@ -83,28 +75,26 @@ async def test_email_auth_api(client, db_session):
 
     finally:
         await db_session.rollback()
-        await db_session.execute(
-            delete(User).where(User.email == email)
-        )
+        await db_session.execute(delete(User).where(User.email == email))
         await db_session.commit()
 
 
 @pytest.mark.asyncio
-async def test_authenticate_returns_registered_user( db_session):
-    user = UserCreate(name="A", email=f"{uuid4()}@example.com", password="123456757")  # Подгтовил
+async def test_authenticate_returns_registered_user(db_session):
+    user = UserCreate(
+        name="A", email=f"{uuid4()}@example.com", password="123456757"
+    )  # Подгтовил
     service = UserService(db_session)  # Создал сервис
     try:
         registered_user = await service.register(user)  # Вызвал регистрацию
         login_user = UserLogin(email=user.email, password=user.password)
         service_login_user = UserService(db_session)
-        authenticated_user  = await service_login_user.authenticate(login_user)
+        authenticated_user = await service_login_user.authenticate(login_user)
         assert authenticated_user.id == registered_user.id
     finally:
         await db_session.rollback()
 
-        await db_session.execute(
-            delete(User).where(User.email == user.email)
-        )
+        await db_session.execute(delete(User).where(User.email == user.email))
         await db_session.commit()
 
 
@@ -129,13 +119,12 @@ async def test_authenticate_rejects_wrong_password(db_session):
             await service.authenticate(login_data)
     finally:
         await db_session.rollback()
-        await db_session.execute(
-            delete(User).where(User.email == data.email)
-        )
+        await db_session.execute(delete(User).where(User.email == data.email))
         await db_session.commit()
 
+
 @pytest.mark.asyncio
-async def test_authenticate_success(client,db_session):
+async def test_authenticate_success(client, db_session):
     email = f"{uuid4()}@example.com"
     password = "123456781"
     try:
@@ -145,42 +134,41 @@ async def test_authenticate_success(client,db_session):
                 "name": "Максим",
                 "email": email,
                 "password": password,
-            }
+            },
         )
 
         assert response.status_code == 201
         registered_user = response.json()
 
-        required = await  client.post(
+        required = await client.post(
             "/auth/login",
             json={
                 "email": email,
-                "password":password,
-            }
+                "password": password,
+            },
         )
         login_data = required.json()
 
         assert required.status_code == 200
-        assert login_data["token_type"] == 'bearer'
-        assert login_data["access_token"] != ''
+        assert login_data["token_type"] == "bearer"
+        assert login_data["access_token"] != ""
 
         payload = jwt.decode(
             login_data["access_token"],
             settings.jwt_secret_key,
             algorithms=[settings.jwt_algorithm],
-            options={"require": ["sub", "exp"]}
+            options={"require": ["sub", "exp"]},
         )
         assert payload["sub"] == registered_user["id"]
 
     finally:
         await db_session.rollback()
-        await db_session.execute(
-            delete(User).where(User.email == email)
-        )
+        await db_session.execute(delete(User).where(User.email == email))
         await db_session.commit()
 
+
 @pytest.mark.asyncio
-async def test_authenticate_fail(client,db_session):
+async def test_authenticate_fail(client, db_session):
     email = f"{uuid4()}@example.com"
     password = "123456781"
     try:
@@ -190,16 +178,16 @@ async def test_authenticate_fail(client,db_session):
                 "name": "Максим",
                 "email": email,
                 "password": password,
-            }
+            },
         )
         assert response.status_code == 201
 
-        required = await  client.post(
+        required = await client.post(
             "/auth/login",
             json={
                 "email": email,
                 "password": "1234567812",
-            }
+            },
         )
         login_data = required.json()
 
@@ -210,19 +198,17 @@ async def test_authenticate_fail(client,db_session):
 
     finally:
         await db_session.rollback()
-        await db_session.execute(
-            delete(User).where(User.email == email)
-        )
+        await db_session.execute(delete(User).where(User.email == email))
         await db_session.commit()
+
 
 @pytest.mark.asyncio
 async def test_authenticate_fail_token(client):
-    response = await client.get(
-        "/auth/me"
-    )
+    response = await client.get("/auth/me")
     assert response.headers["WWW-Authenticate"] == "Bearer"
     assert response.status_code == 401
     assert response.json()["detail"] == "Не удалось подтвердить авторизацию"
+
 
 @pytest.mark.asyncio
 async def test_me_returns_authenticated_user(client, db_session):
@@ -265,10 +251,9 @@ async def test_me_returns_authenticated_user(client, db_session):
 
     finally:
         await db_session.rollback()
-        await db_session.execute(
-            delete(User).where(User.email == email)
-        )
+        await db_session.execute(delete(User).where(User.email == email))
         await db_session.commit()
+
 
 @pytest.mark.asyncio
 async def test_me_returns_authenticated_user_not_found(client):
@@ -278,16 +263,17 @@ async def test_me_returns_authenticated_user_not_found(client):
     wrong_key = secrets.token_hex(32)
 
     token = jwt.encode(
-        {"sub": str(uuid4()), "exp": exp},
-        wrong_key,
-        algorithm=settings.jwt_algorithm)
+        {"sub": str(uuid4()), "exp": exp}, wrong_key, algorithm=settings.jwt_algorithm
+    )
 
     response = await client.get(
         "/auth/me",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 401
-    assert response.json()['detail'] == "Не удалось подтвердить авторизацию"
+    assert response.json()["detail"] == "Не удалось подтвердить авторизацию"
+
+
 @pytest.mark.asyncio
 async def test_authenticate_rejects_missing_user(db_session):
     service = UserService(db_session)
@@ -298,6 +284,7 @@ async def test_authenticate_rejects_missing_user(db_session):
 
     with pytest.raises(InvalidCredentialsError):
         await service.authenticate(login_data)
+
 
 @pytest.mark.asyncio
 async def test_get_current_user_rejects_missing_user(db_session):

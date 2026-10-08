@@ -11,39 +11,42 @@ from app.models import Customer, Membership, Organization, User
 @pytest_asyncio.fixture
 async def customer_data(db_session):
     organization_ids = [uuid4(), uuid4()]
-    user_ids = {
-        role: uuid4()
-        for role in ("owner", "manager", "viewer", "outsider")
-    }
+    user_ids = {role: uuid4() for role in ("owner", "manager", "viewer", "outsider")}
 
     try:
-        db_session.add_all([
-            User(
-                id=user_id,
-                name=role,
-                email=f"{user_id}@example.com",
-                password_hash=None,
-            )
-            for role, user_id in user_ids.items()
-        ])
+        db_session.add_all(
+            [
+                User(
+                    id=user_id,
+                    name=role,
+                    email=f"{user_id}@example.com",
+                    password_hash=None,
+                )
+                for role, user_id in user_ids.items()
+            ]
+        )
 
-        db_session.add_all([
-            Organization(
-                id=organization_id,
-                name=f"Test-{organization_id}",
-            )
-            for organization_id in organization_ids
-        ])
+        db_session.add_all(
+            [
+                Organization(
+                    id=organization_id,
+                    name=f"Test-{organization_id}",
+                )
+                for organization_id in organization_ids
+            ]
+        )
         await db_session.flush()
 
-        db_session.add_all([
-            Membership(
-                user_id=user_ids[role],
-                organization_id=organization_ids[0],
-                role=role,
-            )
-            for role in ("owner", "manager", "viewer")
-        ])
+        db_session.add_all(
+            [
+                Membership(
+                    user_id=user_ids[role],
+                    organization_id=organization_ids[0],
+                    role=role,
+                )
+                for role in ("owner", "manager", "viewer")
+            ]
+        )
 
         # Тот же владелец управляет второй организацией.
         db_session.add(
@@ -66,19 +69,13 @@ async def customer_data(db_session):
         # У Customer стоит ON DELETE RESTRICT:
         # клиентов удаляем раньше организаций.
         await db_session.execute(
-            delete(Customer).where(
-                Customer.organization_id.in_(organization_ids)
-            )
+            delete(Customer).where(Customer.organization_id.in_(organization_ids))
         )
         await db_session.execute(
-            delete(Organization).where(
-                Organization.id.in_(organization_ids)
-            )
+            delete(Organization).where(Organization.id.in_(organization_ids))
         )
         await db_session.execute(
-            delete(User).where(
-                User.id.in_(list(user_ids.values()))
-            )
+            delete(User).where(User.id.in_(list(user_ids.values())))
         )
         await db_session.commit()
 
@@ -86,7 +83,10 @@ async def customer_data(db_session):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("role", ["owner", "manager"])
 async def test_owner_and_manager_can_create_customer(
-    client, db_session, customer_data, role,
+    client,
+    db_session,
+    customer_data,
+    role,
 ):
     organization_id = customer_data["organization_ids"][0]
     token = create_access_token(customer_data["user_ids"][role])
@@ -131,7 +131,11 @@ async def test_owner_and_manager_can_create_customer(
     [("viewer", 403), ("outsider", 404)],
 )
 async def test_customer_creation_requires_access(
-    client, db_session, customer_data, role, expected_status,
+    client,
+    db_session,
+    customer_data,
+    role,
+    expected_status,
 ):
     organization_id = customer_data["organization_ids"][0]
     token = create_access_token(customer_data["user_ids"][role])
@@ -149,7 +153,9 @@ async def test_customer_creation_requires_access(
 
     await db_session.rollback()
     count = await db_session.scalar(
-        select(func.count()).select_from(Customer).where(
+        select(func.count())
+        .select_from(Customer)
+        .where(
             Customer.organization_id == organization_id,
         )
     )
@@ -158,7 +164,9 @@ async def test_customer_creation_requires_access(
 
 @pytest.mark.asyncio
 async def test_customer_creation_rejects_duplicate_email(
-    client, db_session, customer_data,
+    client,
+    db_session,
+    customer_data,
 ):
     organization_id = customer_data["organization_ids"][0]
     token = create_access_token(customer_data["user_ids"]["owner"])
@@ -203,7 +211,9 @@ async def test_customer_creation_rejects_duplicate_email(
 
 @pytest.mark.asyncio
 async def test_same_customer_email_allowed_in_different_organizations(
-    client, db_session, customer_data,
+    client,
+    db_session,
+    customer_data,
 ):
     organization_ids = customer_data["organization_ids"]
     token = create_access_token(customer_data["user_ids"]["owner"])
@@ -236,7 +246,9 @@ async def test_same_customer_email_allowed_in_different_organizations(
 
 @pytest.mark.asyncio
 async def test_customer_creation_requires_authentication(
-    client, db_session, customer_data,
+    client,
+    db_session,
+    customer_data,
 ):
     organization_id = customer_data["organization_ids"][0]
 
@@ -253,7 +265,9 @@ async def test_customer_creation_requires_authentication(
 
     await db_session.rollback()
     count = await db_session.scalar(
-        select(func.count()).select_from(Customer).where(
+        select(func.count())
+        .select_from(Customer)
+        .where(
             Customer.organization_id == organization_id,
         )
     )
@@ -262,7 +276,8 @@ async def test_customer_creation_requires_authentication(
 
 @pytest.mark.asyncio
 async def test_customer_creation_in_missing_organization(
-    client, customer_data,
+    client,
+    customer_data,
 ):
     token = create_access_token(customer_data["user_ids"]["owner"])
 
@@ -298,7 +313,10 @@ async def test_customer_creation_in_missing_organization(
     ],
 )
 async def test_customer_creation_rejects_invalid_data(
-    client, db_session, customer_data, invalid_data,
+    client,
+    db_session,
+    customer_data,
+    invalid_data,
 ):
     organization_id = customer_data["organization_ids"][0]
     token = create_access_token(customer_data["user_ids"]["owner"])
@@ -313,35 +331,38 @@ async def test_customer_creation_rejects_invalid_data(
 
     await db_session.rollback()
     count = await db_session.scalar(
-        select(func.count()).select_from(Customer).where(
+        select(func.count())
+        .select_from(Customer)
+        .where(
             Customer.organization_id == organization_id,
         )
     )
     assert count == 0
 
+
 @pytest_asyncio.fixture
 async def customers_for_read(db_session, customer_data):
-    organization_id, other_organization_id = (
-        customer_data["organization_ids"]
-    )
+    organization_id, other_organization_id = customer_data["organization_ids"]
     customer_id = uuid4()
     other_customer_id = uuid4()
     email = f"{uuid4()}@example.com"
 
-    db_session.add_all([
-        Customer(
-            id=customer_id,
-            organization_id=organization_id,
-            name="Первый клиент",
-            email=email,
-        ),
-        Customer(
-            id=other_customer_id,
-            organization_id=other_organization_id,
-            name="Клиент другой организации",
-            email=f"{uuid4()}@example.com",
-        ),
-    ])
+    db_session.add_all(
+        [
+            Customer(
+                id=customer_id,
+                organization_id=organization_id,
+                name="Первый клиент",
+                email=email,
+            ),
+            Customer(
+                id=other_customer_id,
+                organization_id=other_organization_id,
+                name="Клиент другой организации",
+                email=f"{uuid4()}@example.com",
+            ),
+        ]
+    )
     await db_session.commit()
 
     return {
@@ -355,7 +376,9 @@ async def customers_for_read(db_session, customer_data):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("role", ["owner", "manager", "viewer"])
 async def test_member_can_list_customers(
-    client, customers_for_read, role,
+    client,
+    customers_for_read,
+    role,
 ):
     organization_id = customers_for_read["organization_ids"][0]
     token = create_access_token(customers_for_read["user_ids"][role])
@@ -379,7 +402,9 @@ async def test_member_can_list_customers(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("role", ["owner", "manager", "viewer"])
 async def test_member_can_get_customer(
-    client, customers_for_read, role,
+    client,
+    customers_for_read,
+    role,
 ):
     organization_id = customers_for_read["organization_ids"][0]
     customer_id = customers_for_read["customer_id"]
@@ -402,7 +427,8 @@ async def test_member_can_get_customer(
 
 @pytest.mark.asyncio
 async def test_organization_without_customers_returns_empty_list(
-    client, customer_data,
+    client,
+    customer_data,
 ):
     organization_id = customer_data["organization_ids"][0]
     token = create_access_token(customer_data["user_ids"]["owner"])
@@ -419,12 +445,12 @@ async def test_organization_without_customers_returns_empty_list(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("get_single", [False, True], ids=["list", "get"])
 async def test_outsider_cannot_read_customers(
-    client, customers_for_read, get_single,
+    client,
+    customers_for_read,
+    get_single,
 ):
     organization_id = customers_for_read["organization_ids"][0]
-    token = create_access_token(
-        customers_for_read["user_ids"]["outsider"]
-    )
+    token = create_access_token(customers_for_read["user_ids"]["outsider"])
     url = f"/organization/{organization_id}/customers"
 
     if get_single:
@@ -441,7 +467,8 @@ async def test_outsider_cannot_read_customers(
 
 @pytest.mark.asyncio
 async def test_customer_id_is_scoped_to_organization(
-    client, customers_for_read,
+    client,
+    customers_for_read,
 ):
     organization_id = customers_for_read["organization_ids"][0]
     other_customer_id = customers_for_read["other_customer_id"]
@@ -476,7 +503,9 @@ async def test_get_missing_customer(client, customer_data):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("get_single", [False, True], ids=["list", "get"])
 async def test_read_customers_of_missing_organization(
-    client, customer_data, get_single,
+    client,
+    customer_data,
+    get_single,
 ):
     token = create_access_token(customer_data["user_ids"]["owner"])
     url = f"/organization/{uuid4()}/customers"
@@ -496,7 +525,9 @@ async def test_read_customers_of_missing_organization(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("get_single", [False, True], ids=["list", "get"])
 async def test_read_customers_requires_authentication(
-    client, customers_for_read, get_single,
+    client,
+    customers_for_read,
+    get_single,
 ):
     organization_id = customers_for_read["organization_ids"][0]
     url = f"/organization/{organization_id}/customers"
@@ -532,13 +563,15 @@ async def read_customer_state(db_session, customer_id):
 @pytest.mark.parametrize("actor_role", ["owner", "manager"])
 @pytest.mark.parametrize("fields", ["name", "email", "both"])
 async def test_update_customer(
-    client, db_session, customers_for_read, actor_role, fields,
+    client,
+    db_session,
+    customers_for_read,
+    actor_role,
+    fields,
 ):
     organization_id = customers_for_read["organization_ids"][0]
     customer_id = customers_for_read["customer_id"]
-    token = create_access_token(
-        customers_for_read["user_ids"][actor_role]
-    )
+    token = create_access_token(customers_for_read["user_ids"][actor_role])
     before = await read_customer_state(db_session, customer_id)
     assert before is not None
 
@@ -575,7 +608,9 @@ async def test_update_customer(
 
 @pytest.mark.asyncio
 async def test_update_customer_conflict_rolls_back_all_changes(
-    client, db_session, customers_for_read,
+    client,
+    db_session,
+    customers_for_read,
 ):
     organization_id = customers_for_read["organization_ids"][0]
     customer_id = customers_for_read["customer_id"]
@@ -616,7 +651,10 @@ async def test_update_customer_conflict_rolls_back_all_changes(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("email_source", ["current", "other_organization"])
 async def test_update_customer_allows_non_conflicting_email(
-    client, db_session, customers_for_read, email_source,
+    client,
+    db_session,
+    customers_for_read,
+    email_source,
 ):
     organization_id = customers_for_read["organization_ids"][0]
     customer_id = customers_for_read["customer_id"]
@@ -669,7 +707,10 @@ async def test_update_customer_allows_non_conflicting_email(
     ],
 )
 async def test_update_customer_rejects_invalid_data(
-    client, db_session, customers_for_read, changes,
+    client,
+    db_session,
+    customers_for_read,
+    changes,
 ):
     organization_id = customers_for_read["organization_ids"][0]
     customer_id = customers_for_read["customer_id"]
@@ -690,14 +731,15 @@ async def test_update_customer_rejects_invalid_data(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("actor_role", ["owner", "manager"])
 async def test_delete_customer(
-    client, db_session, customers_for_read, actor_role,
+    client,
+    db_session,
+    customers_for_read,
+    actor_role,
 ):
     organization_id = customers_for_read["organization_ids"][0]
     customer_id = customers_for_read["customer_id"]
     other_customer_id = customers_for_read["other_customer_id"]
-    token = create_access_token(
-        customers_for_read["user_ids"][actor_role]
-    )
+    token = create_access_token(customers_for_read["user_ids"][actor_role])
     headers = {"Authorization": f"Bearer {token}"}
     url = f"/organization/{organization_id}/customers/{customer_id}"
 
@@ -710,10 +752,7 @@ async def test_delete_customer(
     assert response.status_code == 204, response.text
     assert response.content == b""
     assert await read_customer_state(db_session, customer_id) is None
-    assert (
-        await read_customer_state(db_session, other_customer_id)
-        == other_before
-    )
+    assert await read_customer_state(db_session, other_customer_id) == other_before
 
     get_response = await client.get(url, headers=headers)
     assert get_response.status_code == 404, get_response.text
@@ -734,8 +773,12 @@ async def test_delete_customer(
     ],
 )
 async def test_customer_mutation_requires_permission(
-    client, db_session, customers_for_read,
-    method, actor_role, expected_status,
+    client,
+    db_session,
+    customers_for_read,
+    method,
+    actor_role,
+    expected_status,
 ):
     organization_id = customers_for_read["organization_ids"][0]
     customer_id = customers_for_read["customer_id"]
@@ -744,9 +787,7 @@ async def test_customer_mutation_requires_permission(
 
     headers = {}
     if actor_role is not None:
-        token = create_access_token(
-            customers_for_read["user_ids"][actor_role]
-        )
+        token = create_access_token(customers_for_read["user_ids"][actor_role])
         headers["Authorization"] = f"Bearer {token}"
 
     kwargs = {"headers": headers}
@@ -769,7 +810,10 @@ async def test_customer_mutation_requires_permission(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("method", ["PATCH", "DELETE"])
 async def test_customer_mutation_is_scoped_to_organization(
-    client, db_session, customers_for_read, method,
+    client,
+    db_session,
+    customers_for_read,
+    method,
 ):
     organization_id = customers_for_read["organization_ids"][0]
     other_customer_id = customers_for_read["other_customer_id"]
@@ -798,7 +842,11 @@ async def test_customer_mutation_is_scoped_to_organization(
 @pytest.mark.parametrize("method", ["PATCH", "DELETE"])
 @pytest.mark.parametrize("missing", ["customer", "organization"])
 async def test_customer_mutation_returns_not_found(
-    client, db_session, customers_for_read, method, missing,
+    client,
+    db_session,
+    customers_for_read,
+    method,
+    missing,
 ):
     organization_id = customers_for_read["organization_ids"][0]
     existing_customer_id = customers_for_read["customer_id"]
@@ -827,7 +875,4 @@ async def test_customer_mutation_returns_not_found(
 
     assert response.status_code == 404, response.text
     assert response.json()["detail"] == expected_detail
-    assert (
-        await read_customer_state(db_session, existing_customer_id)
-        == before
-    )
+    assert await read_customer_state(db_session, existing_customer_id) == before
