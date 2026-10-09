@@ -99,5 +99,6 @@ async def get_invoice_service(
 
 async def get_payment_service(
     session: AsyncSession = Depends(get_session),
+    psp_client: PSPClient = Depends(get_psp_client),
 ) -> PaymentService:
-    return PaymentService(session)
+    return PaymentService(session, psp_client)

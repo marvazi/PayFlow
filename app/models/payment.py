@@ -43,7 +43,10 @@ class Payment(Base):
     )
 
     invoice: Mapped["Invoice"] = relationship(back_populates="payments")
-
+    provider_transaction_id: Mapped[UUID | None] = mapped_column(
+        nullable=True,
+        unique=True,
+    )
     __table_args__ = (
         CheckConstraint("amount_minor > 0", name="ck_payments_amount_positive"),
         CheckConstraint(

@@ -13,7 +13,8 @@ from app.core.exeptions import (
     OrganizationNotFoundError,
     PaymentAlreadyPendingError,
     PaymentNotFoundError,
-    PermissionDeniedError,
+    PermissionDeniedError, InvalidPaymentStatusError, PSPIdempotencyConflictError, PSPUnavailableError,
+    PSPInvalidResponseError,
 )
 from app.models import Payment, User
 from app.schemas.payment import PaymentCreate, PaymentResponse
@@ -85,3 +86,55 @@ async def get_payments(
         return list_payments
     except (OrganizationNotFoundError, InvoiceNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{payment_id}/retry",
+    response_model=PaymentResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def retry_payment(
+    payment_id: UUID,
+    organization_id: UUID,
+    service: PaymentService = Depends(get_payment_service),
+    user: User = Depends(get_current_user),
+) -> Payment:
+    try:
+        return await service.retry(
+            actor_id=user.id,
+            organization_id=organization_id,
+            payment_id=payment_id,
+        )
+    except (
+        OrganizationNotFoundError,
+        PaymentNotFoundError,
+        InvoiceNotFoundError,
+    ) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except PermissionDeniedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+    except (
+        InvalidPaymentStatusError,
+        InvalidInvoiceStatusError,
+        PSPIdempotencyConflictError,
+    ) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except PSPUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except PSPInvalidResponseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc

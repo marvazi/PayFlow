@@ -76,3 +76,10 @@ class PaymentRepository:
         await self.session.flush()
         await self.session.refresh(payment)
         return payment
+
+    async def set_provider_transaction_id(self,payment: Payment, provider_transaction_id: UUID,) -> Payment:
+        payment.provider_transaction_id = provider_transaction_id
+        await self.session.flush()
+        await self.session.refresh(payment)
+        return payment
+

@@ -10,8 +10,9 @@ from app.core.exeptions import (
     OrganizationNotFoundError,
     PaymentAlreadyPendingError,
     PaymentNotFoundError,
-    PermissionDeniedError,
+    PermissionDeniedError, PSPInvalidResponseError,
 )
+from app.integrations.psp.client import PSPClient
 from app.models import Payment
 from app.repositories.invoice import InvoiceRepository
 from app.repositories.membership import MembershipRepository
@@ -20,8 +21,9 @@ from app.schemas.payment import PaymentCreate
 
 
 class PaymentService:
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, psp_client: PSPClient):
         self.session = session
+        self.psp_client = psp_client
         self.membership_repository = MembershipRepository(session)
         self.invoice_repository = InvoiceRepository(session)
         self.payment_repository = PaymentRepository(session)
@@ -76,6 +78,22 @@ class PaymentService:
                 ) from exc
 
             raise
+        psp_transaction = await self.psp_client.create_transaction(
+            external_payment_id=created_payment.id,
+            amount_minor=created_payment.amount_minor,
+            currency=created_payment.currency,
+        )
+        if psp_transaction.external_payment_id != created_payment.id:
+            raise PSPInvalidResponseError("Данные транзакции PSP не совпадают с платежом")
+        if psp_transaction.amount_minor != created_payment.amount_minor:
+            raise PSPInvalidResponseError("Данные транзакции PSP не совпадают с платежом")
+        if psp_transaction.currency != created_payment.currency:
+            raise PSPInvalidResponseError("Данные транзакции PSP не совпадают с платежом")
+        async with self.session.begin():
+            await self.payment_repository.set_provider_transaction_id(
+                payment=created_payment,
+                provider_transaction_id=psp_transaction.id,
+            )
         return created_payment
 
     async def get_payment(
@@ -160,3 +178,84 @@ class PaymentService:
             await self.payment_repository.update_status(payment=payment, status=status)
 
         return payment
+
+    async def retry(
+            self,
+            actor_id: UUID,
+            organization_id: UUID,
+            payment_id: UUID,
+    ) -> Payment:
+        async with self.session.begin():
+            membership = await self.membership_repository.get_by_user_and_organization(
+                user_id=actor_id,
+                organization_id=organization_id,
+            )
+            if membership is None:
+                raise OrganizationNotFoundError("Организация не найдена")
+            if membership.role not in ("manager", "owner"):
+                raise PermissionDeniedError("Недостаточно прав")
+
+            payment = await self.payment_repository.get(
+                payment_id=payment_id,
+                organization_id=organization_id,
+            )
+            if payment is None:
+                raise PaymentNotFoundError("Платёж не найден")
+
+            if payment.provider_transaction_id is not None:
+                return payment
+
+            if payment.status != "pending":
+                raise InvalidPaymentStatusError(
+                    "Повторно отправить можно только незавершённый платёж"
+                )
+
+            invoice = await self.invoice_repository.get(
+                invoice_id=payment.invoice_id,
+                organization_id=organization_id,
+            )
+            if invoice is None:
+                raise InvoiceNotFoundError("Счёт не найден")
+            if invoice.status != "issued":
+                raise InvalidInvoiceStatusError(
+                    "Оплатить можно только выставленный счёт"
+                )
+        psp_transaction = await self.psp_client.create_transaction(
+            external_payment_id=payment.id,
+            amount_minor=payment.amount_minor,
+            currency=payment.currency,
+        )
+
+        if (
+                psp_transaction.external_payment_id != payment.id
+                or psp_transaction.amount_minor != payment.amount_minor
+                or psp_transaction.currency != payment.currency
+        ):
+            raise PSPInvalidResponseError(
+                "Данные транзакции PSP не совпадают с платежом"
+            )
+
+        async with self.session.begin():
+            payment_update = await self.payment_repository.get_for_update(
+                payment_id=payment_id,
+                organization_id=organization_id,
+            )
+            if payment_update is None:
+                raise PaymentNotFoundError("Платёж не найден")
+
+            if payment_update.provider_transaction_id == psp_transaction.id:
+                return payment_update
+
+            if payment_update.provider_transaction_id is not None:
+                raise PSPInvalidResponseError(
+                    "Платёж уже связан с другой транзакцией PSP"
+                )
+
+            await self.payment_repository.set_provider_transaction_id(
+                payment=payment_update,
+                provider_transaction_id=psp_transaction.id,
+            )
+
+        return payment_update
+
+
