@@ -10,7 +10,8 @@ from app.core.exeptions import (
     OrganizationNotFoundError,
     PaymentAlreadyPendingError,
     PaymentNotFoundError,
-    PermissionDeniedError, PSPInvalidResponseError,
+    PermissionDeniedError,
+    PSPInvalidResponseError,
 )
 from app.integrations.psp.client import PSPClient
 from app.models import Payment
@@ -84,11 +85,17 @@ class PaymentService:
             currency=created_payment.currency,
         )
         if psp_transaction.external_payment_id != created_payment.id:
-            raise PSPInvalidResponseError("Данные транзакции PSP не совпадают с платежом")
+            raise PSPInvalidResponseError(
+                "Данные транзакции PSP не совпадают с платежом"
+            )
         if psp_transaction.amount_minor != created_payment.amount_minor:
-            raise PSPInvalidResponseError("Данные транзакции PSP не совпадают с платежом")
+            raise PSPInvalidResponseError(
+                "Данные транзакции PSP не совпадают с платежом"
+            )
         if psp_transaction.currency != created_payment.currency:
-            raise PSPInvalidResponseError("Данные транзакции PSP не совпадают с платежом")
+            raise PSPInvalidResponseError(
+                "Данные транзакции PSP не совпадают с платежом"
+            )
         async with self.session.begin():
             await self.payment_repository.set_provider_transaction_id(
                 payment=created_payment,
@@ -180,10 +187,10 @@ class PaymentService:
         return payment
 
     async def retry(
-            self,
-            actor_id: UUID,
-            organization_id: UUID,
-            payment_id: UUID,
+        self,
+        actor_id: UUID,
+        organization_id: UUID,
+        payment_id: UUID,
     ) -> Payment:
         async with self.session.begin():
             membership = await self.membership_repository.get_by_user_and_organization(
@@ -227,9 +234,9 @@ class PaymentService:
         )
 
         if (
-                psp_transaction.external_payment_id != payment.id
-                or psp_transaction.amount_minor != payment.amount_minor
-                or psp_transaction.currency != payment.currency
+            psp_transaction.external_payment_id != payment.id
+            or psp_transaction.amount_minor != payment.amount_minor
+            or psp_transaction.currency != payment.currency
         ):
             raise PSPInvalidResponseError(
                 "Данные транзакции PSP не совпадают с платежом"
@@ -257,5 +264,3 @@ class PaymentService:
             )
 
         return payment_update
-
-

@@ -1,3 +1,5 @@
+import FinanceWorkspace from './FinanceWorkspace';
+import './finance.css';
 import React, { useEffect, useRef, useState } from 'react';
 import { Plus, RefreshCw, ArrowLeft, X, Search, Users, UserRound } from 'lucide-react';
 import { members, customers } from './api';
@@ -22,7 +24,7 @@ function Dialog({ title, busy, close, children }) {
   }
   return <div className="overlay" onClick={e => { if (e.target === e.currentTarget && !busy) close(); }}><section ref={ref} tabIndex={-1} onKeyDown={keyboard} className="modal" role="dialog" aria-modal="true" aria-label={title}><button className="icon close" disabled={busy} onClick={close} aria-label="Закрыть"><X/></button><h2>{title}</h2>{children}</section></div>;
 }
-export default function OrganizationWorkspace({ token, organization, user, onBack }) {
+function CustomersAndTeam({ token, organization, user, onBack }) {
   const [team, setTeam] = useState([]), [list, setList] = useState([]), [tab, setTab] = useState('customers');
   const [loading, setLoading] = useState(true), [error, setError] = useState(''), [notice, setNotice] = useState('');
   const [query, setQuery] = useState(''), [dialog, setDialog] = useState(null), [busy, setBusy] = useState(false), [formError, setFormError] = useState('');
@@ -115,5 +117,16 @@ export default function OrganizationWorkspace({ token, organization, user, onBac
       {type === 'deleteMember' && <p>Пользователь <span className="mono">{item.user_id}</span> потеряет доступ к этой организации. Его аккаунт сохранится.</p>}
       <div className="dialog-actions"><button type="button" className="secondary" onClick={() => setDialog(null)}>Отмена</button><button className={deleting ? 'danger solid' : 'primary'}>{busy ? 'Сохраняем…' : deleting ? 'Удалить' : 'Сохранить'}</button></div>
     </fieldset></form></Dialog>}
+  </>;
+}
+
+export default function OrganizationWorkspace(props) {
+  const [section, setSection] = useState('finance');
+  return <>
+    <nav className="pf-section-switch" aria-label="Раздел организации">
+      <button className={section === 'finance' ? 'active' : ''} onClick={() => setSection('finance')}>Счета и платежи</button>
+      <button className={section === 'people' ? 'active' : ''} onClick={() => setSection('people')}>Клиенты и команда</button>
+    </nav>
+    {section === 'finance' ? <FinanceWorkspace {...props}/> : <CustomersAndTeam {...props}/>}
   </>;
 }

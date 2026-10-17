@@ -25,5 +25,6 @@ class PaymentResponse(BaseModel):
     updated_at: datetime
     provider_transaction_id: UUID | None
 
+
 class PaymentUpdate(BaseModel):
     pass

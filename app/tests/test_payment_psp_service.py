@@ -100,30 +100,18 @@ async def payment_case(
 
         # Удаляем только данные этой фикстуры, учитывая внешние ключи.
         await db_session.execute(
-            delete(Payment).where(
-                Payment.organization_id == organization_id
-            )
+            delete(Payment).where(Payment.organization_id == organization_id)
+        )
+        await db_session.execute(delete(Invoice).where(Invoice.id == invoice_id))
+        await db_session.execute(delete(Customer).where(Customer.id == customer_id))
+        await db_session.execute(
+            delete(Membership).where(Membership.organization_id == organization_id)
         )
         await db_session.execute(
-            delete(Invoice).where(Invoice.id == invoice_id)
+            delete(Organization).where(Organization.id == organization_id)
         )
         await db_session.execute(
-            delete(Customer).where(Customer.id == customer_id)
-        )
-        await db_session.execute(
-            delete(Membership).where(
-                Membership.organization_id == organization_id
-            )
-        )
-        await db_session.execute(
-            delete(Organization).where(
-                Organization.id == organization_id
-            )
-        )
-        await db_session.execute(
-            delete(User).where(
-                User.id.in_([owner_id, viewer_id, outsider_id])
-            )
+            delete(User).where(User.id.in_([owner_id, viewer_id, outsider_id]))
         )
         await db_session.commit()
 
@@ -206,9 +194,7 @@ async def test_create_keeps_pending_payment_when_psp_unavailable(
     payment_case,
     psp_client,
 ):
-    psp_client.create_transaction.side_effect = PSPUnavailableError(
-        "PSP недоступен"
-    )
+    psp_client.create_transaction.side_effect = PSPUnavailableError("PSP недоступен")
     service = PaymentService(
         session=db_session,
         psp_client=psp_client,
@@ -268,9 +254,7 @@ async def test_retry_restores_link_without_creating_another_payment(
     assert payment.provider_transaction_id == psp_client.provider_id
 
     result = await db_session.execute(
-        select(Payment.id).where(
-            Payment.invoice_id == payment_case.invoice_id
-        )
+        select(Payment.id).where(Payment.invoice_id == payment_case.invoice_id)
     )
     assert list(result.scalars()) == [pending_payment_id]
 
@@ -310,9 +294,7 @@ async def test_retry_keeps_pending_when_psp_unavailable(
     pending_payment_id,
     psp_client,
 ):
-    psp_client.create_transaction.side_effect = PSPUnavailableError(
-        "PSP недоступен"
-    )
+    psp_client.create_transaction.side_effect = PSPUnavailableError("PSP недоступен")
     service = PaymentService(
         session=db_session,
         psp_client=psp_client,

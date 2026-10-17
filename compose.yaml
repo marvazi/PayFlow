@@ -1,6 +1,57 @@
 name: payflow
 
 services:
+  app:
+    build: .
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      PSP_BASE_URL: http://psp:8000
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      psp:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - |
+        alembic upgrade head &&
+        exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  psp:
+    build: .
+    environment:
+      PSP_DATABASE_URL: postgresql+asyncpg://payflow_psp:${PSP_POSTGRES_PASSWORD}@psp_db:5432/payflow_psp
+      PSP_API_KEY: ${PSP_API_KEY}
+    ports:
+      - "127.0.0.1:8001:8000"
+    depends_on:
+      psp_db:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - |
+        alembic -c psp/alembic.ini upgrade head &&
+        exec uvicorn psp.main:app --host 0.0.0.0 --port 8000
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
   db:
     image: postgres:18
 
@@ -23,6 +74,20 @@ services:
       start_period: 10s
   db_test:
     image: postgres:18
+    environment:
+      POSTGRES_DB: payflow_test
+      POSTGRES_USER: payflow_test
+      POSTGRES_PASSWORD: payflow_test_password
+    ports:
+      - "127.0.0.1:5434:5432"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U payflow_test -d payflow_test
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
