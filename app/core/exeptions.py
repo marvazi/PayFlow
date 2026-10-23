@@ -74,6 +74,10 @@ class InvalidPaymentStatusError(Exception):
     pass
 
 
+class PaymentWebhookConflictError(Exception):
+    pass
+
+
 class PSPUnavailableError(Exception):
     pass
 

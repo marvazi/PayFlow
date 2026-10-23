@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy import select
 
 from psp.core.config import settings
+from psp.core.exceptions import PayFlowUnavailableError
 from psp.models import Transaction
 
 pytestmark = pytest.mark.asyncio
@@ -469,3 +470,195 @@ async def test_complete_transaction_invalid_payload(
         )
         == before
     )
+
+
+@pytest.mark.parametrize("status", ["succeeded", "failed"])
+async def test_complete_sends_webhook_after_commit(
+    psp_client,
+    psp_headers,
+    transaction_payload,
+    psp_session_factory,
+    payflow_client_mock,
+    status,
+):
+    created = await create_transaction(
+        psp_client,
+        psp_headers,
+        transaction_payload,
+    )
+
+    async def check_committed_result(payload):
+        # Другая сессия должна видеть итоговый статус
+        # уже в момент отправки вебхука.
+        rows = await read_transactions(
+            psp_session_factory,
+            transaction_payload["external_payment_id"],
+        )
+
+        assert len(rows) == 1
+        assert rows[0]["status"] == status
+
+        assert payload.model_dump(mode="json") == {
+            "transaction_id": created["id"],
+            "external_payment_id": transaction_payload["external_payment_id"],
+            "amount_minor": transaction_payload["amount_minor"],
+            "currency": transaction_payload["currency"],
+            "status": status,
+        }
+
+    payflow_client_mock.transaction_webhook.side_effect = check_committed_result
+
+    response = await psp_client.post(
+        f"/transactions/{created['id']}/complete",
+        headers=psp_headers,
+        json={"status": status},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == status
+    payflow_client_mock.transaction_webhook.assert_awaited_once()
+
+
+@pytest.mark.parametrize("status", ["succeeded", "failed"])
+async def test_complete_retries_webhook_after_delivery_failure(
+    psp_client,
+    psp_headers,
+    transaction_payload,
+    psp_session_factory,
+    payflow_client_mock,
+    status,
+):
+    created = await create_transaction(
+        psp_client,
+        psp_headers,
+        transaction_payload,
+    )
+    url = f"/transactions/{created['id']}/complete"
+
+    # Первая доставка завершится ошибкой, следующая — успешно.
+    payflow_client_mock.transaction_webhook.side_effect = [
+        PayFlowUnavailableError("PayFlow не ответил вовремя"),
+        None,
+    ]
+
+    first = await psp_client.post(
+        url,
+        headers=psp_headers,
+        json={"status": status},
+    )
+
+    assert first.status_code == 503, first.text
+    payflow_client_mock.transaction_webhook.assert_awaited_once()
+
+    after_failure = await read_transactions(
+        psp_session_factory,
+        transaction_payload["external_payment_id"],
+    )
+
+    assert len(after_failure) == 1
+    assert after_failure[0]["status"] == status
+
+    second = await psp_client.post(
+        url,
+        headers=psp_headers,
+        json={"status": status},
+    )
+
+    assert second.status_code == 200, second.text
+    assert second.json()["status"] == status
+    assert payflow_client_mock.transaction_webhook.await_count == 2
+
+    calls = payflow_client_mock.transaction_webhook.await_args_list
+    assert calls[0].args[0].model_dump(mode="json") == calls[1].args[0].model_dump(
+        mode="json"
+    )
+
+    # Повторная доставка не должна менять статус или updated_at.
+    after_retry = await read_transactions(
+        psp_session_factory,
+        transaction_payload["external_payment_id"],
+    )
+    assert after_retry == after_failure
+
+
+@pytest.mark.parametrize("status", ["succeeded", "failed"])
+async def test_complete_repeat_sends_webhook_again(
+    psp_client,
+    psp_headers,
+    transaction_payload,
+    payflow_client_mock,
+    status,
+):
+    created = await create_transaction(
+        psp_client,
+        psp_headers,
+        transaction_payload,
+    )
+    url = f"/transactions/{created['id']}/complete"
+
+    for _ in range(2):
+        response = await psp_client.post(
+            url,
+            headers=psp_headers,
+            json={"status": status},
+        )
+        assert response.status_code == 200, response.text
+
+    assert payflow_client_mock.transaction_webhook.await_count == 2
+
+    calls = payflow_client_mock.transaction_webhook.await_args_list
+    assert calls[0].args[0].model_dump(mode="json") == calls[1].args[0].model_dump(
+        mode="json"
+    )
+
+
+@pytest.mark.parametrize(
+    ("first_status", "conflicting_status"),
+    [
+        ("succeeded", "failed"),
+        ("failed", "succeeded"),
+    ],
+)
+async def test_conflicting_complete_does_not_send_webhook(
+    psp_client,
+    psp_headers,
+    transaction_payload,
+    psp_session_factory,
+    payflow_client_mock,
+    first_status,
+    conflicting_status,
+):
+    created = await create_transaction(
+        psp_client,
+        psp_headers,
+        transaction_payload,
+    )
+    url = f"/transactions/{created['id']}/complete"
+
+    first = await psp_client.post(
+        url,
+        headers=psp_headers,
+        json={"status": first_status},
+    )
+    assert first.status_code == 200, first.text
+
+    before = await read_transactions(
+        psp_session_factory,
+        transaction_payload["external_payment_id"],
+    )
+    payflow_client_mock.transaction_webhook.reset_mock()
+
+    response = await psp_client.post(
+        url,
+        headers=psp_headers,
+        json={"status": conflicting_status},
+    )
+
+    assert response.status_code == 409, response.text
+    payflow_client_mock.transaction_webhook.assert_not_awaited()
+
+    after = await read_transactions(
+        psp_session_factory,
+        transaction_payload["external_payment_id"],
+    )
+    assert after == before

@@ -1,8 +1,9 @@
+import secrets
 from collections.abc import AsyncIterator
 
 import httpx
-from fastapi import Depends, HTTPException, Request
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cache.redis import RedisCache
@@ -17,6 +18,30 @@ from app.services.membership import MembershipService
 from app.services.organization import OrganizationService
 from app.services.payment import PaymentService
 from app.services.user import UserService
+
+psp_webhook_secret = APIKeyHeader(
+    name="X-Webhook-Secret",
+    auto_error=False,
+)
+
+
+async def verify_webhook(
+    webhook_secret: str | None = Depends(psp_webhook_secret),
+) -> None:
+    if webhook_secret is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Отсутствует секрет вебхука",
+        )
+
+    if not secrets.compare_digest(
+        webhook_secret.encode("utf-8"),
+        settings.webhook_secret.encode("utf-8"),
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Недействительный секрет вебхука",
+        )
 
 
 def get_user_service(session: AsyncSession = Depends(get_session)) -> UserService:

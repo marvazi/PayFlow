@@ -8,15 +8,18 @@ from psp.core.exceptions import (
     InvalidTransactionStatusError,
     TransactionNotFoundError,
 )
+from psp.integrations.payflow.client.client import PayFlowClient
+from psp.integrations.payflow.client.schemas import PayFlowWebhookPayload
 from psp.models import Transaction
 from psp.repositories.transaction import TransactionRepository
 from psp.schemas.transaction import TransactionCreate
 
 
 class TransactionService:
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, payflow_client: PayFlowClient) -> None:
         self.session = session
         self.transaction_repository = TransactionRepository(session)
+        self.payflow_client = payflow_client
 
     @staticmethod
     def _check_parameters(
@@ -90,21 +93,42 @@ class TransactionService:
             raise TransactionNotFoundError("Операция не найдена")
         return transaction
 
-    async def complete(self, transaction_id: UUID, status: str) -> Transaction:
+    async def complete(
+        self,
+        transaction_id: UUID,
+        status: str,
+    ) -> Transaction:
         if status not in ("succeeded", "failed"):
-            raise InvalidTransactionStatusError
+            raise InvalidTransactionStatusError("Допустимые статусы: succeeded, failed")
+
         async with self.session.begin():
             transaction = await self.transaction_repository.get_for_update(
-                transaction_id=transaction_id
+                transaction_id=transaction_id,
             )
             if transaction is None:
-                raise TransactionNotFoundError
-            if transaction.status == status:
-                return transaction
-            if transaction.status != "pending":
-                raise InvalidTransactionStatusError
-            await self.transaction_repository.update_status(
-                status=status,
-                transaction=transaction,
-            )
+                raise TransactionNotFoundError("Операция не найдена")
+
+            if transaction.status != status:
+                if transaction.status != "pending":
+                    raise InvalidTransactionStatusError(
+                        "Завершённую транзакцию нельзя перевести в другой статус"
+                    )
+
+                await self.transaction_repository.update_status(
+                    status=status,
+                    transaction=transaction,
+                )
+
+        payload = PayFlowWebhookPayload.model_validate(
+            {
+                "transaction_id": transaction.id,
+                "external_payment_id": transaction.external_payment_id,
+                "amount_minor": transaction.amount_minor,
+                "currency": transaction.currency,
+                "status": transaction.status,
+            }
+        )
+
+        await self.payflow_client.transaction_webhook(payload)
+
         return transaction

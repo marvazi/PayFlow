@@ -1,5 +1,7 @@
 from collections.abc import AsyncIterator
+from unittest.mock import AsyncMock
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import (
@@ -16,6 +18,15 @@ TEST_DATABASE_URL = (
     "postgresql+asyncpg://"
     "payflow_test:payflow_test_password@127.0.0.1:5434/payflow_test"
 )
+
+
+@pytest.fixture
+def cache_mock():
+    cache = AsyncMock()
+    cache.get.return_value = None
+    cache.set.return_value = None
+    cache.delete.return_value = None
+    return cache
 
 
 @pytest_asyncio.fixture()

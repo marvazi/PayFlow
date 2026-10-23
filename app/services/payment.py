@@ -10,6 +10,7 @@ from app.core.exeptions import (
     OrganizationNotFoundError,
     PaymentAlreadyPendingError,
     PaymentNotFoundError,
+    PaymentWebhookConflictError,
     PermissionDeniedError,
     PSPInvalidResponseError,
 )
@@ -18,7 +19,7 @@ from app.models import Payment
 from app.repositories.invoice import InvoiceRepository
 from app.repositories.membership import MembershipRepository
 from app.repositories.payment import PaymentRepository
-from app.schemas.payment import PaymentCreate
+from app.schemas.payment import PaymentCreate, PaymentWebhookPayload
 
 
 class PaymentService:
@@ -139,50 +140,73 @@ class PaymentService:
 
     async def process_result(
         self,
-        organization_id: UUID,
-        payment_id: UUID,
-        status: str,
+        payload: PaymentWebhookPayload,
     ) -> Payment:
-        if status not in ("succeeded", "failed"):
+        if payload.status not in ("succeeded", "failed"):
             raise InvalidPaymentStatusError(
                 "Допустимые результаты оплаты: succeeded, failed"
             )
+
         async with self.session.begin():
-            payment = await self.payment_repository.get(
-                payment_id=payment_id,
-                organization_id=organization_id,
+            payment = await self.payment_repository.get_by_id(
+                payment_id=payload.external_payment_id,
             )
             if payment is None:
                 raise PaymentNotFoundError("Платёж не найден")
+
+            organization_id = payment.organization_id
+
             invoice = await self.invoice_repository.get_for_update(
                 invoice_id=payment.invoice_id,
                 organization_id=organization_id,
             )
             if invoice is None:
                 raise InvoiceNotFoundError("Счёт не найден")
+
             payment = await self.payment_repository.get_for_update(
-                payment_id=payment_id,
+                payment_id=payload.external_payment_id,
                 organization_id=organization_id,
             )
             if payment is None:
                 raise PaymentNotFoundError("Платёж не найден")
 
-            if payment.status == status:
+            if payment.amount_minor != payload.amount_minor:
+                raise PaymentWebhookConflictError("Сумма платежа не совпадает")
+
+            if payment.currency != payload.currency:
+                raise PaymentWebhookConflictError("Валюта платежа не совпадает")
+
+            if payment.provider_transaction_id is None:
+                await self.payment_repository.set_provider_transaction_id(
+                    payment=payment,
+                    provider_transaction_id=payload.transaction_id,
+                )
+            elif payment.provider_transaction_id != payload.transaction_id:
+                raise PaymentWebhookConflictError("ID операции PSP не совпадает")
+
+            if payment.status == payload.status:
                 return payment
+
             if payment.status != "pending":
                 raise InvalidPaymentStatusError(
                     "Завершённый платёж нельзя перевести в другой статус"
                 )
+
             if invoice.status != "issued":
                 raise InvalidInvoiceStatusError(
                     "Обработать оплату можно только для выставленного счёта"
                 )
-            if status == "succeeded":
+
+            if payload.status == "succeeded":
                 await self.invoice_repository.update_status(
                     invoice=invoice,
                     status="paid",
                 )
-            await self.payment_repository.update_status(payment=payment, status=status)
+
+            await self.payment_repository.update_status(
+                payment=payment,
+                status=payload.status,
+            )
 
         return payment
 

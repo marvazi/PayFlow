@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,6 +8,9 @@ from psp.api.dependencies import get_transaction_service, verify_api_key
 from psp.core.exceptions import (
     IdempotencyConflictError,
     InvalidTransactionStatusError,
+    PayFlowInvalidResponseError,
+    PayFlowUnavailableError,
+    PayFlowWebhookConflictError,
     TransactionNotFoundError,
 )
 from psp.schemas.transaction import (
@@ -16,6 +20,7 @@ from psp.schemas.transaction import (
 )
 from psp.services.transaction import TransactionService
 
+logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/transactions",
     tags=["transactions"],
@@ -57,6 +62,44 @@ async def complete_transaction(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except InvalidTransactionStatusError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PayFlowUnavailableError as exc:
+        logger.exception(
+            "Не удалось подтвердить доставку вебхука: transaction_id=%s",
+            transaction_id,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Результат транзакции сохранён, но доставку уведомления "
+                "подтвердить не удалось. Повторите запрос с тем же статусом."
+            ),
+        ) from exc
+
+    except PayFlowWebhookConflictError as exc:
+        logger.exception(
+            "PayFlow отклонил вебхук из-за конфликта: transaction_id=%s",
+            transaction_id,
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Результат PSP сохранён, но PayFlow отклонил уведомление "
+                "из-за конфликта данных или статуса."
+            ),
+        ) from exc
+
+    except PayFlowInvalidResponseError as exc:
+        logger.exception(
+            "PayFlow отклонил вебхук: transaction_id=%s",
+            transaction_id,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Результат PSP сохранён, но PayFlow отклонил уведомление. "
+                "Проверьте настройки интеграции и логи."
+            ),
+        ) from exc
 
 
 @router.get(

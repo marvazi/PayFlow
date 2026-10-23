@@ -11,6 +11,7 @@ from psp.core.exceptions import (
 from psp.models import Transaction
 from psp.schemas.transaction import TransactionCreate
 from psp.services.transaction import TransactionService
+from psp.tests.conftest import payflow_client_mock
 
 pytestmark = pytest.mark.asyncio
 
@@ -43,7 +44,7 @@ async def read_transactions(session_factory, external_payment_id):
 
 async def create_with_barrier(session_factory, data, barrier):
     async with session_factory() as session:
-        service = TransactionService(session)
+        service = TransactionService(session, payflow_client_mock)
         original_create = service.transaction_repository.create
 
         async def synchronized_create(*args, **kwargs):
@@ -64,7 +65,7 @@ async def complete_with_barrier(
     barrier,
 ):
     async with session_factory() as session:
-        service = TransactionService(session)
+        service = TransactionService(session, payflow_client=payflow_client_mock)
         original_get = service.transaction_repository.get_for_update
 
         async def synchronized_get(*args, **kwargs):
@@ -82,7 +83,7 @@ async def complete_with_barrier(
 
 async def seed_transaction(session_factory, external_payment_id):
     async with session_factory() as session:
-        service = TransactionService(session)
+        service = TransactionService(session, payflow_client=payflow_client_mock)
         transaction = await service.create(
             data=TransactionCreate(
                 external_payment_id=external_payment_id,
@@ -177,6 +178,7 @@ async def test_concurrent_create_different_parameters(
 @pytest.mark.parametrize("status", ["succeeded", "failed"])
 async def test_concurrent_complete_same_status(
     psp_session_factory,
+    payflow_client_mock,
     tracked_payment_ids,
     status,
 ):
@@ -221,6 +223,7 @@ async def test_concurrent_complete_same_status(
 async def test_concurrent_complete_conflicting_statuses(
     psp_session_factory,
     tracked_payment_ids,
+    payflow_client_mock,
 ):
     external_payment_id = uuid4()
     tracked_payment_ids.append(external_payment_id)

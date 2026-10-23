@@ -77,6 +77,12 @@ class PaymentRepository:
         await self.session.refresh(payment)
         return payment
 
+    async def get_by_id(self, payment_id: UUID) -> Payment | None:
+        result = await self.session.execute(
+            select(Payment).where(Payment.id == payment_id)
+        )
+        return result.scalar_one_or_none()
+
     async def set_provider_transaction_id(
         self,
         payment: Payment,

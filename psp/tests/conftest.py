@@ -1,15 +1,15 @@
-from collections.abc import AsyncIterator
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import (
-    AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 
+from psp.api.dependencies import get_payflow_client
 from psp.core.config import settings
 from psp.db.session import get_session
 from psp.main import app
@@ -20,6 +20,13 @@ TEST_DATABASE_URL = (
     "payflow_psp_test:payflow_psp_test_password"
     "@127.0.0.1:5436/payflow_psp_test"
 )
+
+
+@pytest.fixture
+def payflow_client_mock():
+    client = AsyncMock()
+    client.transaction_webhook.return_value = None
+    return client
 
 
 @pytest_asyncio.fixture
@@ -37,14 +44,17 @@ async def psp_session_factory():
 
 
 @pytest_asyncio.fixture
-async def psp_client(psp_session_factory):
-    async def override_get_session() -> AsyncIterator[AsyncSession]:
-        # Каждый HTTP-запрос получает собственную сессию.
+async def psp_client(psp_session_factory, payflow_client_mock):
+    async def override_get_session():
         async with psp_session_factory() as session:
             yield session
 
+    async def override_get_payflow_client():
+        yield payflow_client_mock
+
     previous_overrides = app.dependency_overrides.copy()
     app.dependency_overrides[get_session] = override_get_session
+    app.dependency_overrides[get_payflow_client] = override_get_payflow_client
 
     try:
         async with AsyncClient(

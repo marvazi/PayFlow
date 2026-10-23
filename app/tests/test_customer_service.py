@@ -8,7 +8,7 @@ from app.services.customer import CustomerService
 
 
 @pytest.mark.asyncio
-async def test_find_customer_in_organization(db_session):
+async def test_find_customer_in_organization(db_session, cache_mock):
     try:
         user = User(
             name="Test user",
@@ -34,7 +34,7 @@ async def test_find_customer_in_organization(db_session):
         db_session.add_all([membership, customer])
         await db_session.flush()
 
-        service = CustomerService(db_session)
+        service = CustomerService(db_session, cache_mock)
         found_customer = await service.find_customer_by_id(
             actor_id=user.id,
             organization_id=organization.id,

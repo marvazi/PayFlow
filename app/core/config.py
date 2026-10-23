@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     psp_base_url: str = "http://127.0.0.1:8001"
     psp_api_key: str
     psp_timeout_seconds: float = Field(default=5.0, gt=0)
+    webhook_secret: str = Field(min_length=32)
 
 
 settings = Settings()

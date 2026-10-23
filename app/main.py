@@ -11,6 +11,7 @@ from app.api.customer import router as customer_router
 from app.api.invoice import router as invoice_router
 from app.api.organization import router as organization_router
 from app.api.payment import router as payment_router
+from app.api.webhook import router as webhook_router
 from app.cache.redis import RedisCache
 from app.core.config import settings
 from app.db.session import get_session
@@ -41,6 +42,7 @@ app.include_router(organization_router)
 app.include_router(customer_router)
 app.include_router(invoice_router)
 app.include_router(payment_router)
+app.include_router(webhook_router)
 
 
 @app.get("/health", tags=["health"])
