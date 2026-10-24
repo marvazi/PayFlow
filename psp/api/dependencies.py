@@ -31,11 +31,9 @@ async def get_payflow_client() -> AsyncIterator[PayFlowClient]:
 
 async def get_transaction_service(
     session: AsyncSession = Depends(get_session),
-    payflow_client: PayFlowClient = Depends(get_payflow_client),
 ) -> TransactionService:
     return TransactionService(
         session=session,
-        payflow_client=payflow_client,
     )
 
 

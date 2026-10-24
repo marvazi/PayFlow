@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from redis.asyncio import Redis
+from redis.backoff import NoBackoff
+from redis.retry import Retry
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,8 +24,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     redis_client = Redis.from_url(
         settings.redis_url,
         decode_responses=True,
-        socket_connect_timeout=1.0,
-        socket_timeout=1.0,
+        socket_connect_timeout=0.3,
+        socket_timeout=0.3,
+        retry=Retry(NoBackoff(), 0),
     )
     app.state.cache = RedisCache(
         redis=redis_client,

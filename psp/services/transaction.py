@@ -1,14 +1,15 @@
+import asyncio
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from psp.integrations.celery.tasks import delivery_webhook_task
 from psp.core.exceptions import (
     IdempotencyConflictError,
     InvalidTransactionStatusError,
     TransactionNotFoundError,
 )
-from psp.integrations.payflow.client.client import PayFlowClient
 from psp.integrations.payflow.client.schemas import PayFlowWebhookPayload
 from psp.models import Transaction
 from psp.repositories.transaction import TransactionRepository
@@ -16,10 +17,9 @@ from psp.schemas.transaction import TransactionCreate
 
 
 class TransactionService:
-    def __init__(self, session: AsyncSession, payflow_client: PayFlowClient) -> None:
+    def __init__(self, session: AsyncSession,) -> None:
         self.session = session
         self.transaction_repository = TransactionRepository(session)
-        self.payflow_client = payflow_client
 
     @staticmethod
     def _check_parameters(
@@ -129,6 +129,9 @@ class TransactionService:
             }
         )
 
-        await self.payflow_client.transaction_webhook(payload)
+        await asyncio.to_thread(
+            delivery_webhook_task.delay,
+            payload.model_dump(mode="json")
+        )
 
         return transaction

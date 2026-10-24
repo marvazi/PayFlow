@@ -34,6 +34,7 @@ services:
       PSP_PAYFLOW_WEBHOOK_SECRET: ${WEBHOOK_SECRET}
       PSP_PAYFLOW_BASE_URL: http://app:8000
       PSP_PAYFLOW_TIMEOUT_SECONDS: "5"
+      PSP_CELERY_BROKER_URL: redis://redis:6379/1
     ports:
       - "127.0.0.1:8001:8000"
     depends_on:
@@ -102,6 +103,24 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  psp-worker:
+    build: .
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      psp_db:
+        condition: service_healthy
+    environment:
+      PSP_DATABASE_URL: postgresql+asyncpg://payflow_psp:${PSP_POSTGRES_PASSWORD}@psp_db:5432/payflow_psp
+      PSP_CELERY_BROKER_URL: redis://redis:6379/1
+      PSP_API_KEY: ${PSP_API_KEY}
+      PSP_PAYFLOW_WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      PSP_PAYFLOW_BASE_URL: http://app:8000
+      PSP_PAYFLOW_TIMEOUT_SECONDS: "5"
+    command: celery -A psp.integrations.celery.core:celery_app worker --loglevel=INFO
 
   psp_db:
     image: postgres:18
